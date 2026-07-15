@@ -20,15 +20,10 @@ import (
 	"time"
 )
 
-// embeddedCACertPEM 表示当前模块中的 embeddedCACertPEM 状态值。
+// legacyCACertPEM 仅用于移除旧版本安装到系统信任存储的共享 CA。
 //
 //go:embed ca.crt
-var embeddedCACertPEM []byte
-
-// embeddedCAKeyPEM 表示当前模块中的 embeddedCAKeyPEM 状态值。
-//
-//go:embed ca.key
-var embeddedCAKeyPEM []byte
+var legacyCACertPEM []byte
 
 // Manager 定义了当前模块中的 Manager 类型。
 type Manager struct {
@@ -52,25 +47,18 @@ func NewManager(caCertPath, caKeyPath string) (*Manager, error) {
 	return NewManagerFromPEM(certPEM, keyPEM)
 }
 
-// NewEmbeddedManager 用于处理与 NewEmbeddedManager 相关的逻辑。
-func NewEmbeddedManager() (*Manager, error) {
-	return NewManagerFromPEM(embeddedCACertPEM, embeddedCAKeyPEM)
-}
-
-// EmbeddedCACertPEM 用于处理与 EmbeddedCACertPEM 相关的逻辑。
-func EmbeddedCACertPEM() []byte {
-	return cloneBytes(embeddedCACertPEM)
-}
-
-// EmbeddedCAKeyPEM 用于处理与 EmbeddedCAKeyPEM 相关的逻辑。
-func EmbeddedCAKeyPEM() []byte {
-	return cloneBytes(embeddedCAKeyPEM)
+// LegacyCACertPEM 返回旧版本共享 CA 的公开证书，用于迁移清理。
+func LegacyCACertPEM() []byte {
+	return cloneBytes(legacyCACertPEM)
 }
 
 // NewManagerFromPEM 用于处理与 NewManagerFromPEM 相关的逻辑。
 func NewManagerFromPEM(caCertPEM, caKeyPEM []byte) (*Manager, error) {
 	caCert, caKey, err := loadCAFromPEM(caCertPEM, caKeyPEM)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateCAPair(caCert, caKey); err != nil {
 		return nil, err
 	}
 	return &Manager{caCert: caCert, caKey: caKey, cache: make(map[string]*tls.Certificate)}, nil

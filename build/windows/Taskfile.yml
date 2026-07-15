@@ -119,7 +119,7 @@ tasks:
       USE_MSIX_TOOL: '{{.USE_MSIX_TOOL | default "false"}}'
 
   create:zip:
-    summary: 生成 Windows ZIP 包（包含 exe 与 certs）
+    summary: 生成 Windows ZIP 包（包含 exe 与 LICENSE）
     internal: true
     vars:
       ARCH: '{{.ARCH | default ARCH}}'
@@ -141,12 +141,25 @@ tasks:
             ref: .DEV
           SCAN:
             ref: .SCAN
-      - rm -rf "{{.STAGING_DIR}}"
+      - cmd: powershell -NoProfile -Command "if (Test-Path -LiteralPath '{{.STAGING_DIR}}') { Remove-Item -LiteralPath '{{.STAGING_DIR}}' -Recurse -Force }"
+        platforms: [windows]
+      - cmd: rm -rf "{{.STAGING_DIR}}"
+        platforms: [darwin, linux]
       - mkdir -p "{{.STAGING_DIR}}"
       - cp "{{.OUTPUT}}" "{{.STAGING_DIR}}/"
-      - (cd "{{.STAGING_DIR}}" && zip -qry "../{{.ZIP_NAME}}" .)
-      - rm -rf "{{.STAGING_DIR}}"
-      - rm -f "{{.OUTPUT}}"
+      - cp LICENSE "{{.STAGING_DIR}}/LICENSE"
+      - cmd: powershell -NoProfile -Command "Compress-Archive -Path '{{.STAGING_DIR}}\*' -DestinationPath '{{.BIN_DIR}}\{{.ZIP_NAME}}' -Force"
+        platforms: [windows]
+      - cmd: (cd "{{.STAGING_DIR}}" && zip -qry "../{{.ZIP_NAME}}" .)
+        platforms: [darwin, linux]
+      - cmd: powershell -NoProfile -Command "Remove-Item -LiteralPath '{{.STAGING_DIR}}' -Recurse -Force"
+        platforms: [windows]
+      - cmd: rm -rf "{{.STAGING_DIR}}"
+        platforms: [darwin, linux]
+      - cmd: powershell -NoProfile -Command "Remove-Item -LiteralPath '{{.OUTPUT}}' -Force"
+        platforms: [windows]
+      - cmd: rm -f "{{.OUTPUT}}"
+        platforms: [darwin, linux]
 
   run:
     summary: 运行 Windows 可执行文件（仅在 Windows 可用）

@@ -21,11 +21,11 @@ import Logo from "@/assets/logo.png";
 const route = useRoute();
 const message = useMessage();
 const showIcon = computed(() => route.meta.showIcon !== false);
-const title = computed(() => route.meta.title ?? "Cursor助手｜永久免费｜自定义API");
+const title = computed(() => route.meta.title ?? "My Cursor｜永久免费｜自定义API");
 const directlyClose = computed(() => route.meta.directlyClose === true);
 const showFooter = computed(() => route.path === "/");
 const footerAuthorInfo = ref(null);
-const usageDocsURL = "https://docs.leokun.cn";
+const usageDocsURL = "https://github.com/xxloocee/my-cursor#readme";
 let proxyStateTimer = null;
 const proxyStatePollIntervalMs = 10000;
 const netProxyEndpoint = computed(
@@ -226,7 +226,7 @@ onUnmounted(() => {
         class="center-row shrink-0 gap-[6px] cursor-pointer rounded-[6px] px-[6px] py-[3px] transition-colors duration-150 hover:bg-[#1f1f1f] hover:text-[#e5e5e5]"
         @click="handleOpenAuthorHome"
       >
-        <span class="icon-[ant-design--bilibili-outlined] text-[14px]"></span>
+        <span class="icon-[mdi--web] text-[14px]"></span>
         <span>{{ footerAuthorInfo.buttonText }}</span>
       </button>
       <div

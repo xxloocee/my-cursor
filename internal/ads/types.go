@@ -1,8 +1,8 @@
 package ads
 
 const (
-	// FetchURL 保留旧名称表示默认广告位地址。
-	FetchURL = "https://ads.leokun.cn/1"
+	// FetchURL 保留旧名称以兼容现有资源加载接口。
+	FetchURL = ""
 	// FetchURL     = "http://localhost:3000/ad.zip"
 	RoutePrefix  = "/ad"
 	EventUpdated = "ad:updated"
@@ -13,11 +13,7 @@ type Slot struct {
 	FetchURL string
 }
 
-var Slots = []Slot{
-	{ID: "1", FetchURL: "https://ads.leokun.cn/1"},
-	{ID: "2", FetchURL: "https://ads.leokun.cn/2"},
-	{ID: "3", FetchURL: "https://ads.leokun.cn/3"},
-}
+var Slots = []Slot{}
 
 type WindowConfig struct {
 	Width  int `json:"width" yaml:"width"`

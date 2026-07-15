@@ -7,19 +7,20 @@ includes:
   linux: ./build/linux/Taskfile.yml
 
 vars:
-  APP_NAME: "Cursor助手"
+  APP_NAME: "my-cursor"
+  DISPLAY_NAME: "My Cursor"
   BIN_DIR: "bin"
   APP_VERSION:
     sh: 'go run ./scripts/release version -config ./build/config.yml'
-  RELEASE_REPO: "leookun/cursor-byok"
-  RELEASE_BASE_NAME: "cursor-byok"
+  RELEASE_REPO: "xxloocee/my-cursor"
+  RELEASE_BASE_NAME: "my-cursor"
   RELEASE_SOURCE_PATH: "release-notes.md"
   RELEASE_DIR: '{{.BIN_DIR}}/release/{{.APP_VERSION}}'
   RELEASE_NOTES_PATH: '{{.RELEASE_DIR}}/.release-notes.md'
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
   SCAN: '{{.SCAN | default "false"}}'
   CURRENT_WINDOWS_ARCH: '{{if eq ARCH "386"}}386{{else}}amd64{{end}}'
-  CURRENT_WINDOWS_NAME: '{{if eq .CURRENT_WINDOWS_ARCH "386"}}windows-32{{else}}windows-64{{end}}'
+  CURRENT_WINDOWS_NAME: '{{if eq .CURRENT_WINDOWS_ARCH "386"}}my-cursor-windows-386{{else}}my-cursor{{end}}'
   CURRENT_DARWIN_NAME: '{{if eq ARCH "arm64"}}macos-arm64{{else}}macos-intel{{end}}'
   CURRENT_LINUX_ARCH: "amd64"
   CURRENT_LINUX_NAME: "linux-amd64"
@@ -108,8 +109,8 @@ tasks:
       - task: windows:create:zip
         vars:
           ARCH: 386
-          OUTPUT: '{{.BIN_DIR}}/windows-32.exe'
-          ZIP_NAME: windows-32.zip
+          OUTPUT: '{{.BIN_DIR}}/my-cursor-windows-386.exe'
+          ZIP_NAME: my-cursor-windows-386.zip
           SCAN: '{{.SCAN}}'
 
   build:windows:amd64:
@@ -117,8 +118,8 @@ tasks:
       - task: windows:create:zip
         vars:
           ARCH: amd64
-          OUTPUT: '{{.BIN_DIR}}/windows-64.exe'
-          ZIP_NAME: windows-64.zip
+          OUTPUT: '{{.BIN_DIR}}/my-cursor.exe'
+          ZIP_NAME: my-cursor.zip
           SCAN: '{{.SCAN}}'
 
   build:linux:current:
@@ -168,10 +169,10 @@ tasks:
     internal: true
     cmds:
       - mkdir -p "{{.BIN_DIR}}"
-      - rm -f "{{.BIN_DIR}}/macos-arm64.dmg" "{{.BIN_DIR}}/macos-intel.dmg" "{{.BIN_DIR}}/windows-32.zip" "{{.BIN_DIR}}/windows-64.zip" "{{.BIN_DIR}}/linux-amd64.tar.gz"
-      - rm -f "{{.BIN_DIR}}/macos-arm64" "{{.BIN_DIR}}/macos-intel" "{{.BIN_DIR}}/windows-32.exe" "{{.BIN_DIR}}/windows-64.exe" "{{.BIN_DIR}}/linux-amd64"
+      - rm -f "{{.BIN_DIR}}/macos-arm64.dmg" "{{.BIN_DIR}}/macos-intel.dmg" "{{.BIN_DIR}}/my-cursor-windows-386.zip" "{{.BIN_DIR}}/my-cursor.zip" "{{.BIN_DIR}}/linux-amd64.tar.gz"
+      - rm -f "{{.BIN_DIR}}/macos-arm64" "{{.BIN_DIR}}/macos-intel" "{{.BIN_DIR}}/my-cursor-windows-386.exe" "{{.BIN_DIR}}/my-cursor.exe" "{{.BIN_DIR}}/linux-amd64"
       - rm -f "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.APP_NAME}}.exe"
-      - rm -rf "{{.BIN_DIR}}/macos-arm64.app" "{{.BIN_DIR}}/macos-intel.app" "{{.BIN_DIR}}/{{.APP_NAME}}.app" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
+      - rm -rf "{{.BIN_DIR}}/macos-arm64.app" "{{.BIN_DIR}}/macos-intel.app" "{{.BIN_DIR}}/{{.DISPLAY_NAME}}.app" "{{.BIN_DIR}}/{{.DISPLAY_NAME}}.dev.app"
 
   dev:
     summary: 启动开发模式（前台，终端会保持占用）
@@ -179,7 +180,7 @@ tasks:
       - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
 
   ads:install:
-    summary: 安装广告页依赖
+    summary: 安装上游推荐页依赖
     dir: '{{.TASKFILE_DIR}}/ads-page'
     sources:
       - package.json
@@ -190,7 +191,7 @@ tasks:
       - yarn install --frozen-lockfile
 
   ads:dev:
-    summary: 启动广告页开发服务（http://127.0.0.1:5174/ad/）
+    summary: 启动上游推荐页开发服务（http://127.0.0.1:5174/ad/）
     dir: '{{.TASKFILE_DIR}}/ads-page'
     deps:
       - task: ads:install
@@ -198,7 +199,7 @@ tasks:
       - yarn dev
 
   ads:build:
-    summary: 构建广告 ZIP 产物
+    summary: 构建上游推荐页 ZIP 产物
     dir: '{{.TASKFILE_DIR}}/ads-page'
     deps:
       - task: ads:install
@@ -234,38 +235,41 @@ tasks:
 
   release:build:macos:arm64:
     cmds:
+      - task: release:ensure:dir
       - task: darwin:package:archive
         vars:
           ARCH: arm64
           BINARY_NAME: cursor-release-macos-arm64
           OUTPUT: '{{.BIN_DIR}}/cursor-release-macos-arm64'
-          APP_BUNDLE: '{{.APP_NAME}}.app'
+          APP_BUNDLE: '{{.DISPLAY_NAME}}.app'
           ARCHIVE_PATH: '{{.RELEASE_DIR}}/{{.RELEASE_BASE_NAME}}-{{.APP_VERSION}}-macos-arm64.tar.gz'
           SCAN: '{{.SCAN}}'
 
   release:build:macos:amd64:
-    internal: true
     cmds:
+      - task: release:ensure:dir
       - task: darwin:package:archive
         vars:
           ARCH: amd64
           BINARY_NAME: cursor-release-macos-amd64
           OUTPUT: '{{.BIN_DIR}}/cursor-release-macos-amd64'
-          APP_BUNDLE: '{{.APP_NAME}}.app'
+          APP_BUNDLE: '{{.DISPLAY_NAME}}.app'
           ARCHIVE_PATH: '{{.RELEASE_DIR}}/{{.RELEASE_BASE_NAME}}-{{.APP_VERSION}}-macos-amd64.tar.gz'
           SCAN: '{{.SCAN}}'
 
   release:build:windows:amd64:
     cmds:
+      - task: release:ensure:dir
       - task: windows:create:zip
         vars:
           ARCH: amd64
-          OUTPUT: '{{.BIN_DIR}}/{{.RELEASE_BASE_NAME}}-windows-amd64.exe'
+          OUTPUT: '{{.BIN_DIR}}/my-cursor.exe'
           ZIP_NAME: 'release/{{.APP_VERSION}}/{{.RELEASE_BASE_NAME}}-{{.APP_VERSION}}-windows-amd64.zip'
           SCAN: '{{.SCAN}}'
 
   release:build:linux:amd64:
     cmds:
+      - task: release:ensure:dir
       - task: linux:package:archive
         vars:
           ARCH: amd64
@@ -336,89 +340,6 @@ tasks:
     cmds:
       - echo "release assets verified"
 
-  release:sync:readme:
-    summary: 同步 README 到公开发布仓库（发布日志来源固定为 release-notes.md）
-    internal: true
-    env:
-      GH_PAGER: cat
-      GIT_PAGER: cat
-      PAGER: cat
-    preconditions:
-      - sh: gh --version >/dev/null 2>&1
-        msg: "未检测到 gh，请先安装 GitHub CLI。"
-      - sh: gh auth token >/dev/null 2>&1
-        msg: "gh 未登录，请先执行 gh auth login。"
-    cmds:
-      - |
-        python3 - <<'PY'
-        import base64
-        import json
-        import pathlib
-        import subprocess
-        import sys
-        import time
-
-        RETRYABLE_TOKENS = ("EOF", "timeout", "TLS", "temporarily unavailable", "connection reset", "connection refused")
-
-        def run_gh(cmd, *, input_text=None, allow_404=False, retries=4):
-            last = None
-            for attempt in range(1, retries + 1):
-                completed = subprocess.run(
-                    cmd,
-                    input=input_text,
-                    text=True,
-                    capture_output=True,
-                )
-                if completed.returncode == 0:
-                    return completed
-                stderr = (completed.stderr or "").strip()
-                stdout = (completed.stdout or "").strip()
-                combined = f"{stderr}\n{stdout}".strip()
-                if allow_404 and "404" in combined:
-                    return completed
-                last = completed
-                if not any(token.lower() in combined.lower() for token in RETRYABLE_TOKENS):
-                    return completed
-                if attempt < retries:
-                    time.sleep(min(2 ** (attempt - 1), 5))
-            return last
-
-        repo = "{{.RELEASE_REPO}}"
-        readme_path = pathlib.Path("README.md")
-        content = readme_path.read_bytes()
-        encoded = base64.b64encode(content).decode("ascii")
-
-        get_cmd = [
-            "gh", "api",
-            f"repos/{repo}/contents/README.md",
-        ]
-        result = run_gh(get_cmd, allow_404=True)
-
-        payload = {
-            "message": "docs: sync README from source repo",
-            "content": encoded,
-            "branch": "main",
-        }
-
-        if result.returncode == 0:
-            existing = json.loads(result.stdout)
-            existing_content = base64.b64decode(existing["content"])
-            if existing_content == content:
-                sys.exit(0)
-            payload["sha"] = existing["sha"]
-
-        put_cmd = [
-            "gh", "api",
-            f"repos/{repo}/contents/README.md",
-            "--method", "PUT",
-            "--input", "-",
-        ]
-        completed = run_gh(put_cmd, input_text=json.dumps(payload))
-        if completed.returncode != 0 and completed.stderr:
-            sys.stderr.write(completed.stderr)
-        sys.exit(completed.returncode)
-        PY
-
   release:github:
     summary: 发布当前版本到 GitHub Releases
     env:
@@ -433,7 +354,6 @@ tasks:
     cmds:
       - task: release:verify:assets
       - task: release:manifest
-      - task: release:sync:readme
       - |
         python3 - <<'PY'
         import mimetypes

@@ -45,11 +45,11 @@ func EnsureCACertFile(certPEM []byte, currentPath string) (string, error) {
 		logger.Infof("ensureCACertFile: unchanged path=%s", certPath)
 		return certPath, nil
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return "", fmt.Errorf("读取内置 CA 证书失败: %w", err)
+		return "", fmt.Errorf("读取设备 CA 证书失败: %w", err)
 	}
 
 	if err := os.WriteFile(certPath, certPEM, 0o644); err != nil {
-		return "", fmt.Errorf("写入内置 CA 证书失败: %w", err)
+		return "", fmt.Errorf("写入设备 CA 证书失败: %w", err)
 	}
 	sum := sha256.Sum256(certPEM)
 	logger.Infof(

@@ -160,3 +160,30 @@ func EnsureCACertInstalled(certPEM []byte, certPath string) error {
 	logger.Infof("ensureCACertInstalled: cert not installed in system store, installing...")
 	return installCACertToWindowsStore(certPEM, certPath)
 }
+
+// RemoveCACertInstalled 从 Windows 系统信任存储移除指定 CA。
+func RemoveCACertInstalled(certPEM []byte) error {
+	installed, err := isCACertInstalled(certPEM)
+	if err != nil {
+		return fmt.Errorf("检查系统证书安装状态失败: %w", err)
+	}
+	if !installed {
+		return nil
+	}
+	thumbprint, err := getCertThumbprint(certPEM)
+	if err != nil {
+		return fmt.Errorf("获取证书指纹失败: %w", err)
+	}
+	if err := runElevatedCertutil("-delstore", windowsRootStoreName, thumbprint); err != nil {
+		return err
+	}
+	installed, err = isCACertInstalled(certPEM)
+	if err != nil {
+		return fmt.Errorf("验证系统证书移除状态失败: %w", err)
+	}
+	if installed {
+		return fmt.Errorf("证书删除命令已执行，但系统信任存储中仍存在该证书")
+	}
+	logger.Infof("removeCACertInstalled: cert removed from system store, thumbprint=%s", thumbprint)
+	return nil
+}
