@@ -5,19 +5,19 @@
 !include "FileFunc.nsh"
 
 !ifndef INFO_PROJECTNAME
-    !define INFO_PROJECTNAME "Cursor助手"
+    !define INFO_PROJECTNAME "my-cursor"
 !endif
 !ifndef INFO_COMPANYNAME
-    !define INFO_COMPANYNAME "Cursor助手"
+    !define INFO_COMPANYNAME "My Cursor"
 !endif
 !ifndef INFO_PRODUCTNAME
-    !define INFO_PRODUCTNAME "Cursor助手"
+    !define INFO_PRODUCTNAME "My Cursor"
 !endif
 !ifndef INFO_PRODUCTVERSION
-    !define INFO_PRODUCTVERSION "0.0.40"
+    !define INFO_PRODUCTVERSION "0.1.0"
 !endif
 !ifndef INFO_COPYRIGHT
-    !define INFO_COPYRIGHT "© 2026, Cursor助手"
+    !define INFO_COPYRIGHT "© 2026, My Cursor"
 !endif
 !ifndef PRODUCT_EXECUTABLE
     !define PRODUCT_EXECUTABLE "${INFO_PROJECTNAME}.exe"

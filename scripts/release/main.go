@@ -111,7 +111,7 @@ func runManifest(args []string) {
 	assetsDir := flags.String("assets-dir", "", "directory containing release assets")
 	outputPath := flags.String("out", "", "manifest output file")
 	repo := flags.String("repo", "", "GitHub repo in owner/repo form")
-	baseName := flags.String("base-name", "cursor-byok", "release asset basename")
+	baseName := flags.String("base-name", "my-cursor", "release asset basename")
 	notesPath := flags.String("notes", "", "release notes file")
 	_ = flags.Parse(args)
 

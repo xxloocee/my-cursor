@@ -9,7 +9,7 @@ const router = createRouter({
     {
       path: "/",
       component: Home,
-      meta: { showIcon: true, title: "Cursor助手｜永久免费｜自定义API", directlyClose: false },
+      meta: { showIcon: true, title: "My Cursor｜永久免费｜自定义API", directlyClose: false },
     },
     {
       path: "/model-config",

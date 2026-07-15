@@ -168,8 +168,10 @@ tasks:
       - mkdir -p "{{.STAGING_DIR}}"
       - cp "{{.BINARY_PATH}}" "{{.STAGING_DIR}}/{{.ARCHIVE_BINARY_NAME}}"
       - chmod +x "{{.STAGING_DIR}}/{{.ARCHIVE_BINARY_NAME}}"
+      - mkdir -p "{{.STAGING_DIR}}/licenses"
+      - cp LICENSE "{{.STAGING_DIR}}/licenses/LICENSE"
       - rm -f "{{.ARCHIVE_PATH}}"
-      - env LC_ALL=C tar -C "{{.STAGING_DIR}}" -czf "{{.ARCHIVE_PATH}}" "{{.ARCHIVE_BINARY_NAME}}"
+      - env LC_ALL=C tar -C "{{.STAGING_DIR}}" -czf "{{.ARCHIVE_PATH}}" "{{.ARCHIVE_BINARY_NAME}}" licenses
       - rm -rf "{{.STAGING_DIR}}"
 
   cleanup:package:artifacts:

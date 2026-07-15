@@ -18,7 +18,7 @@
 
 当前实现不再支持：
 
-- Pro / `cursor-byok`
+- 旧版 Pro 协议
 - HTTP/protocol trace debug UI
 - DB-backed store、会话索引和 searchable conversation memory
 
@@ -98,6 +98,7 @@ internal/backend/
 
 - `~/.cursor-local-assistant-v2/config.yaml`
 - `~/.cursor-local-assistant-v2/data/ca.crt`
+- `~/.cursor-local-assistant-v2/data/ca.key`
 - `~/.cursor-local-assistant-v2/data/ads/`
 - `~/.cursor-local-assistant-v2/history/`
 - `~/.cursor-local-assistant-v2/logs/`
@@ -105,8 +106,8 @@ internal/backend/
 约定：
 
 - `config.yaml` 是用户配置
-- `data/ca.crt` 是注入给宿主的 CA 证书
-- `data/ads/` 是广告包与资源缓存目录
+- `data/ca.crt` 与 `data/ca.key` 是首次运行时生成的设备专属 CA；私钥只保存在本地数据目录
+- `data/ads/` 是兼容资源缓存目录
 - `history/` 是会话事实与全局 usage JSON 目录，不属于日志
 - `logs/` 只保留必要文本运行日志
 

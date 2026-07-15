@@ -101,7 +101,6 @@
   "93e08803675e378b": "Model ID",
   "942ff2d88baca0c6": "Checking for updates...",
   "986678eccf56dc28": "Service status is being updated. Please try again later.",
-  "991e374fce0f4492": "Cursor Assistant",
   "9970736b36ff2b68": "The base URL of the model service, usually an OpenAI- or Anthropic-compatible endpoint.",
   "9b17fa889b307f7f": "Valid turns: {0}",
   "9c38b6e9bf94abec": "Switched to Direct Cursor Mode",

@@ -188,7 +188,7 @@ tasks:
     summary: 生成 .app 包
     internal: true
     vars:
-      APP_BUNDLE: '{{.APP_BUNDLE | default (printf "%s.app" .APP_NAME)}}'
+      APP_BUNDLE: '{{.APP_BUNDLE | default (printf "%s.app" .DISPLAY_NAME)}}'
       BINARY_NAME: '{{.BINARY_NAME | default .APP_NAME}}'
       BINARY_PATH: '{{.OUTPUT | default (printf "%s/%s" .BIN_DIR .BINARY_NAME)}}'
       EXECUTABLE_NAME: '{{.EXECUTABLE_NAME | default .APP_NAME}}'
@@ -197,6 +197,7 @@ tasks:
       - mkdir -p "{{.BIN_DIR}}/{{.APP_BUNDLE}}/Contents/MacOS"
       - mkdir -p "{{.BIN_DIR}}/{{.APP_BUNDLE}}/Contents/Resources"
       - cp build/darwin/icons.icns "{{.BIN_DIR}}/{{.APP_BUNDLE}}/Contents/Resources"
+      - cp LICENSE "{{.BIN_DIR}}/{{.APP_BUNDLE}}/Contents/Resources/LICENSE"
       - cp "{{.BINARY_PATH}}" "{{.BIN_DIR}}/{{.APP_BUNDLE}}/Contents/MacOS/{{.EXECUTABLE_NAME}}"
       - cp build/darwin/Info.plist "{{.BIN_DIR}}/{{.APP_BUNDLE}}/Contents"
       - task: codesign:adhoc
@@ -208,7 +209,7 @@ tasks:
     summary: 使用临时签名（开发测试）
     internal: true
     vars:
-      APP_BUNDLE: '{{.APP_BUNDLE | default (printf "%s.app" .APP_NAME)}}'
+      APP_BUNDLE: '{{.APP_BUNDLE | default (printf "%s.app" .DISPLAY_NAME)}}'
     cmds:
       - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.APP_BUNDLE}}"
 
@@ -216,13 +217,13 @@ tasks:
     summary: 生成 macOS DMG 包（优先使用 create-dmg，不存在时回退 hdiutil）
     internal: true
     vars:
-      APP_BUNDLE: '{{.APP_BUNDLE | default (printf "%s.app" .APP_NAME)}}'
+      APP_BUNDLE: '{{.APP_BUNDLE | default (printf "%s.app" .DISPLAY_NAME)}}'
       DMG_NAME: '{{.DMG_NAME | default (printf "%s.dmg" .APP_NAME)}}'
       STAGING_DIR: '{{.BIN_DIR}}/.dmg-{{.ARCH | default ARCH}}'
     cmds:
       - rm -rf "{{.STAGING_DIR}}"
       - mkdir -p "{{.STAGING_DIR}}"
-      - cp -R "{{.BIN_DIR}}/{{.APP_BUNDLE}}" "{{.STAGING_DIR}}/{{.APP_NAME}}.app"
+      - cp -R "{{.BIN_DIR}}/{{.APP_BUNDLE}}" "{{.STAGING_DIR}}/{{.DISPLAY_NAME}}.app"
       - |
         if [ -f "build/dmg-extras/提示损坏？点我.command" ]; then
           cp "build/dmg-extras/提示损坏？点我.command" "{{.STAGING_DIR}}/提示损坏？点我.command"
@@ -231,9 +232,9 @@ tasks:
       - |
         if command -v create-dmg >/dev/null 2>&1; then
           rm -f "{{.BIN_DIR}}/{{.DMG_NAME}}"
-          create-dmg --volname "{{.APP_NAME}}" --window-size 600 400 --icon-size 100 --app-drop-link 450 200 "{{.BIN_DIR}}/{{.DMG_NAME}}" "{{.STAGING_DIR}}"
+          create-dmg --volname "{{.DISPLAY_NAME}}" --window-size 600 400 --icon-size 100 --app-drop-link 450 200 "{{.BIN_DIR}}/{{.DMG_NAME}}" "{{.STAGING_DIR}}"
         else
-          hdiutil create -volname "{{.APP_NAME}}" -srcfolder "{{.STAGING_DIR}}" -ov -format UDZO "{{.BIN_DIR}}/{{.DMG_NAME}}"
+          hdiutil create -volname "{{.DISPLAY_NAME}}" -srcfolder "{{.STAGING_DIR}}" -ov -format UDZO "{{.BIN_DIR}}/{{.DMG_NAME}}"
         fi
       - rm -rf "{{.STAGING_DIR}}"
 
@@ -241,7 +242,7 @@ tasks:
     summary: 生成 macOS updater tar.gz 归档
     internal: true
     vars:
-      APP_BUNDLE: '{{.APP_BUNDLE | default (printf "%s.app" .APP_NAME)}}'
+      APP_BUNDLE: '{{.APP_BUNDLE | default (printf "%s.app" .DISPLAY_NAME)}}'
       ARCHIVE_PATH: '{{.ARCHIVE_PATH | default (printf "%s/%s.tar.gz" .BIN_DIR .APP_NAME)}}'
     cmds:
       - rm -f "{{.ARCHIVE_PATH}}"
@@ -251,7 +252,7 @@ tasks:
     summary: 清理打包中间产物
     internal: true
     vars:
-      APP_BUNDLE: '{{.APP_BUNDLE | default (printf "%s.app" .APP_NAME)}}'
+      APP_BUNDLE: '{{.APP_BUNDLE | default (printf "%s.app" .DISPLAY_NAME)}}'
       BINARY_NAME: '{{.BINARY_NAME | default .APP_NAME}}'
       BINARY_PATH: '{{.OUTPUT | default (printf "%s/%s" .BIN_DIR .BINARY_NAME)}}'
     cmds:
@@ -264,10 +265,10 @@ tasks:
       BINARY_NAME: '{{.BINARY_NAME | default .APP_NAME}}'
       EXECUTABLE_NAME: '{{.EXECUTABLE_NAME | default .APP_NAME}}'
     cmds:
-      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS"
-      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Resources"
-      - cp build/darwin/icons.icns "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Resources"
-      - cp "{{.BIN_DIR}}/{{.BINARY_NAME}}" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS/{{.EXECUTABLE_NAME}}"
-      - cp "build/darwin/Info.dev.plist" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Info.plist"
-      - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
-      - '{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS/{{.EXECUTABLE_NAME}}'
+      - mkdir -p "{{.BIN_DIR}}/{{.DISPLAY_NAME}}.dev.app/Contents/MacOS"
+      - mkdir -p "{{.BIN_DIR}}/{{.DISPLAY_NAME}}.dev.app/Contents/Resources"
+      - cp build/darwin/icons.icns "{{.BIN_DIR}}/{{.DISPLAY_NAME}}.dev.app/Contents/Resources"
+      - cp "{{.BIN_DIR}}/{{.BINARY_NAME}}" "{{.BIN_DIR}}/{{.DISPLAY_NAME}}.dev.app/Contents/MacOS/{{.EXECUTABLE_NAME}}"
+      - cp "build/darwin/Info.dev.plist" "{{.BIN_DIR}}/{{.DISPLAY_NAME}}.dev.app/Contents/Info.plist"
+      - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.DISPLAY_NAME}}.dev.app"
+      - '{{.BIN_DIR}}/{{.DISPLAY_NAME}}.dev.app/Contents/MacOS/{{.EXECUTABLE_NAME}}'

@@ -1409,23 +1409,6 @@
         }
       ]
     },
-    "991e374fce0f4492": {
-      "source": "Cursor助手",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/layouts/MainLayout.vue",
-          "line": 16,
-          "column": 50
-        },
-        {
-          "file": "src/router/index.js",
-          "line": 12,
-          "column": 38
-        }
-      ]
-    },
     "9970736b36ff2b68": {
       "source": "模型服务的 API 根地址，通常为兼容 OpenAI 或 Anthropic 的接口入口。",
       "kind": "text",

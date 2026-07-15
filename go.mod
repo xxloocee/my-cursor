@@ -9,6 +9,7 @@ require (
 	github.com/elazarl/goproxy v1.7.2
 	github.com/firecrawl/html-to-markdown v0.0.0-20260312013131-1af9901a5d61
 	github.com/go-chi/chi/v5 v5.2.5
+	github.com/gofrs/flock v0.13.0
 	github.com/google/uuid v1.6.0
 	github.com/jhump/protoreflect v1.18.0
 	github.com/leaanthony/u v1.1.1

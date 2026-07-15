@@ -8,17 +8,17 @@
         AllowPromptForPassword="false">
     </Settings>
     <Installer
-        Path="Cursor助手"
+        Path="my-cursor"
         Arguments=""
-        InstallLocation="C:\Program Files\Cursor助手\Cursor助手">
+        InstallLocation="C:\Program Files\My Cursor\my-cursor">
     </Installer>
     <PackageInformation
-        PackageName="Cursor助手"
-        PackageDisplayName="Cursor助手"
-        PublisherName="CN=Cursor助手"
-        PublisherDisplayName="Cursor助手"
+        PackageName="my-cursor"
+        PackageDisplayName="My Cursor"
+        PublisherName="CN=My Cursor"
+        PublisherDisplayName="My Cursor"
         Version="0.1.0.0"
-        PackageDescription="Cursor助手">
+        PackageDescription="My Cursor">
         <Capabilities>
             <Capability Name="runFullTrust" />
             
@@ -26,9 +26,9 @@
         <Applications>
             <Application
                 Id="com.cursor.wuxianxubei"
-                Description="Cursor助手"
-                DisplayName="Cursor助手"
-                ExecutableName="Cursor助手"
+                Description="My Cursor"
+                DisplayName="My Cursor"
+                ExecutableName="my-cursor"
                 EntryPoint="Windows.FullTrustApplication">
                 
             </Application>
@@ -41,13 +41,13 @@
         </Dependencies>
         <Properties>
             <Framework>false</Framework>
-            <DisplayName>Cursor助手</DisplayName>
-            <PublisherDisplayName>Cursor助手</PublisherDisplayName>
-            <Description>Cursor助手</Description>
+            <DisplayName>My Cursor</DisplayName>
+            <PublisherDisplayName>My Cursor</PublisherDisplayName>
+            <Description>My Cursor</Description>
             <Logo>Assets\AppIcon.png</Logo>
         </Properties>
     </PackageInformation>
-    <SaveLocation PackagePath="Cursor助手.msix" />
+    <SaveLocation PackagePath="my-cursor.msix" />
     <PackageIntegrity>
         <CertificatePath></CertificatePath>
     </PackageIntegrity>

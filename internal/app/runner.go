@@ -34,7 +34,7 @@ import (
 
 const (
 	// appName 表示当前模块中的 appName 状态值。
-	appName = "Cursor助手"
+	appName = "My Cursor"
 	// adRefreshInterval 表示后台广告拉取间隔。
 	adRefreshInterval = 3 * time.Minute
 )
@@ -66,20 +66,21 @@ func Run(resources EmbeddedResources) error {
 	logger.Init()
 	netproxy.InstallDefaultTransport()
 
-	embeddedCACertPEM := certs.EmbeddedCACertPEM()
-	logEmbeddedCAInfo(embeddedCACertPEM)
-
-	certManager, err := certs.NewEmbeddedManager()
+	certManager, localCACertPEM, err := certs.LoadOrCreateManager(
+		appdata.CACertFilePath(),
+		appdata.CAKeyFilePath(),
+	)
 	if err != nil {
 		return err
 	}
+	logCAInfo("device CA", localCACertPEM)
 
 	defaultBackendBaseURL := "http://" + serverconfig.DefaultBackendListenAddr
 	proxyServer, err := mitm.NewProxyServer(serverconfig.DefaultProxyListenAddr, defaultBackendBaseURL, "", "", certManager)
 	if err != nil {
 		return err
 	}
-	proxyService := bridge.NewProxyService(proxyServer, certManager, embeddedCACertPEM)
+	proxyService := bridge.NewProxyService(proxyServer, certManager, localCACertPEM)
 	adAssetBaseURL := defaultBackendBaseURL
 	if cfg, err := proxyService.LoadUserConfig(); err == nil {
 		adAssetBaseURL = browserReachableLoopbackBaseURL(cfg.BackendListenAddr)
@@ -364,20 +365,21 @@ func browserReachableLoopbackBaseURL(listenAddr string) string {
 	return "http://" + net.JoinHostPort(host, port)
 }
 
-// logEmbeddedCAInfo 用于处理与 logEmbeddedCAInfo 相关的逻辑。
-func logEmbeddedCAInfo(certPEM []byte) {
+// logCAInfo 记录 CA 的公开信息，不输出私钥内容。
+func logCAInfo(label string, certPEM []byte) {
 	if len(certPEM) == 0 {
-		logger.Errorf("embedded CA is empty")
+		logger.Errorf("%s is empty", label)
 		return
 	}
-	cert, err := parseEmbeddedCert(certPEM)
+	cert, err := parseCert(certPEM)
 	if err != nil {
-		logger.Errorf("parse embedded CA failed: %v", err)
+		logger.Errorf("parse %s failed: %v", label, err)
 		return
 	}
 	sum := sha256.Sum256(cert.Raw)
 	logger.Infof(
-		"embedded CA loaded: sha256=%s subject=%s valid=%s~%s",
+		"%s loaded: sha256=%s subject=%s valid=%s~%s",
+		label,
 		strings.ToUpper(hex.EncodeToString(sum[:])),
 		cert.Subject.String(),
 		cert.NotBefore.Format(time.RFC3339),
@@ -385,8 +387,8 @@ func logEmbeddedCAInfo(certPEM []byte) {
 	)
 }
 
-// parseEmbeddedCert 用于处理与 parseEmbeddedCert 相关的逻辑。
-func parseEmbeddedCert(data []byte) (*x509.Certificate, error) {
+// parseCert 解析 PEM 或 DER 证书。
+func parseCert(data []byte) (*x509.Certificate, error) {
 	if block, _ := pem.Decode(data); block != nil {
 		return x509.ParseCertificate(block.Bytes)
 	}
