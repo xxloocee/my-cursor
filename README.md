@@ -1,10 +1,10 @@
 # My Cursor
 
-<img width="820" alt="image" src="https://github.com/user-attachments/assets/2e1710b0-cdbd-4576-bd24-1614df016219" />
+<img width="820" alt="My Cursor 主界面" src="assets/cursor/my-cursor-main.png" />
 
-<img width="820" alt="image" src="https://github.com/user-attachments/assets/00885453-6a91-4052-aadf-f686daeec881" />
+<img width="820" alt="模型配置列表" src="assets/cursor/model-list.png" />
 
-<img width="820" alt="image" src="https://github.com/user-attachments/assets/a607be84-a738-4e33-9750-13352e74001c" />
+<img width="820" alt="模型编辑表单" src="assets/cursor/model-form.png" />
 
 My Cursor 是一款用于管理 Cursor 本地服务与自定义模型 API 的桌面工具。
 
