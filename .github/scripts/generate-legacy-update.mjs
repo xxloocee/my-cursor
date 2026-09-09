@@ -39,7 +39,7 @@ async function main() {
   const repository = required(options, "repository");
   const assetsDir = resolve(required(options, "assets-dir"));
   const output = resolve(required(options, "output"));
-  const releaseNotes = options.get("notes")?.trim() || `Cursor BYOK v${version}`;
+  const releaseNotes = options.get("notes")?.trim() || `My Cursor v${version}`;
 
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
     throw new Error(`invalid semantic version: ${version}`);

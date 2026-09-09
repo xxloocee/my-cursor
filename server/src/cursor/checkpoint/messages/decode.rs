@@ -220,12 +220,10 @@ fn decode_replay_state(signature: &str) -> Result<crate::model::ProviderReplaySt
         });
     };
     let bytes = STANDARD.decode(encoded).map_err(|error| {
-        Error::Protocol(format!(
-            "invalid Cursor BYOK replay envelope base64: {error}"
-        ))
+        Error::Protocol(format!("invalid My Cursor replay envelope base64: {error}"))
     })?;
     serde_json::from_slice(&bytes)
-        .map_err(|error| Error::Protocol(format!("invalid Cursor BYOK replay envelope: {error}")))
+        .map_err(|error| Error::Protocol(format!("invalid My Cursor replay envelope: {error}")))
 }
 
 fn decode_tool_result(value: &Value) -> Result<ToolResultContent> {

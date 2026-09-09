@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Cursor BYOK",
+  "productName": "My Cursor",
   "version": "0.1.7",
   "identifier": "dev.cursorbyok.desktop",
   "build": {
@@ -33,9 +33,9 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc1MEY2RjQzRjA0MjhCMDUKUldRRmkwTHdRMjhQZGJJam9zT1NwcW83L1V4ckJvbkQzQ0FYVFZ6MGRpa1N2NVFkUHk1dW14c1AK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU4QzZFMjVDMkI3MzUxMTAKUldRUVVYTXJYT0xHNk5CNU91THZKcThzckh3TlR2N0EyZ2ZTcmxTNDZLRjFYZ2RTcGpkYWFrR2IK",
       "endpoints": [
-        "https://github.com/leookun/cursor-byok/releases/latest/download/latest.json"
+        "https://github.com/xxloocee/my-cursor/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"

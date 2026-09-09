@@ -134,7 +134,7 @@ pub fn reject_self_proxy(address: &str, local_proxy_port: u16) -> Result<()> {
         .map_err(|error| Error::Config(format!("invalid proxy address: {error}")))?;
     if url.port_or_known_default() == Some(local_proxy_port) && url_host_is_loopback(&url) {
         return Err(Error::Config(
-            "proxy address cannot point to the Cursor BYOK local proxy".into(),
+            "proxy address cannot point to the My Cursor local proxy".into(),
         ));
     }
     Ok(())

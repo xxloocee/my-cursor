@@ -40,4 +40,4 @@ build-desktop: $(LOCAL_TAURI_SIGNING_KEY)
 endif
 
 build-docker:
-	docker build --tag cursor-byok:local .
+	docker build --tag my-cursor:local .

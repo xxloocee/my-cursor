@@ -1,7 +1,7 @@
 {
   "name": "cursor-byok-desktop",
   "version": "0.1.7",
-  "description": "Cursor BYOK desktop management application",
+  "description": "My Cursor desktop model management application",
   "type": "module",
   "scripts": {
     "start": "vite",
@@ -34,7 +34,6 @@
     "keepalive-for-react-router": "^5.0.7",
     "monaco-editor": "0.56.0",
     "react": "^19.2.8",
-    "react-css-marquee": "^1.0.1",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.2",
     "sortablejs": "^1.15.7",

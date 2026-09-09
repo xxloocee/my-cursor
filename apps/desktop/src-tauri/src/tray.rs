@@ -13,14 +13,14 @@ const OPEN_MENU_ID: &str = "tray-open";
 const QUIT_MENU_ID: &str = "tray-quit";
 
 pub fn create(app: &mut App) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, OPEN_MENU_ID, "打开 Cursor BYOK", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, OPEN_MENU_ID, "打开 My Cursor", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, QUIT_MENU_ID, "退出", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &separator, &quit])?;
 
     TrayIconBuilder::with_id("main")
         .icon(tauri::include_image!("./icons/32x32.png"))
-        .tooltip("Cursor BYOK")
+        .tooltip("My Cursor")
         .menu(&menu)
         .show_menu_on_left_click(cfg!(target_os = "macos"))
         .on_menu_event(|app, event| match event.id().as_ref() {

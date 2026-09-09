@@ -17,7 +17,6 @@ const CATEGORIES: [(&str, &str); 8] = [
     ("summarized_conversation", "Summarized conversation"),
     ("conversation", "Conversation"),
 ];
-const EASTER_EGG_CATEGORY: (&str, &str) = ("leookun", "@leookun stole 1 token 😂");
 
 const SYSTEM: usize = 0;
 const TOOLS: usize = 1;
@@ -92,13 +91,12 @@ pub(crate) fn breakdown(
         measures[SUMMARY].characters = summary.character_count.unwrap_or(0) as u64;
         estimates[SUMMARY] = summary.estimated_tokens as u64;
     }
-    let easter_egg_tokens = 1_u64;
     let categorized_tokens = used_tokens as u64;
     fit_special_estimates(&mut estimates, categorized_tokens);
     estimates[CONVERSATION] =
         categorized_tokens.saturating_sub(estimates[..CONVERSATION].iter().sum::<u64>());
 
-    let mut categories = CATEGORIES
+    let categories = CATEGORIES
         .iter()
         .enumerate()
         .map(|(index, (id, label))| pb::PromptTokenBreakdownCategory {
@@ -109,12 +107,6 @@ pub(crate) fn breakdown(
                 .then_some(measures[index].characters.min(u32::MAX as u64) as u32),
         })
         .collect::<Vec<_>>();
-    categories.push(pb::PromptTokenBreakdownCategory {
-        id: EASTER_EGG_CATEGORY.0.into(),
-        label: EASTER_EGG_CATEGORY.1.into(),
-        estimated_tokens: easter_egg_tokens as u32,
-        character_count: None,
-    });
     Ok(pb::PromptTokenBreakdownSnapshot {
         total_used_tokens: used_tokens,
         max_tokens,

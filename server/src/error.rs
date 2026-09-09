@@ -26,7 +26,7 @@ pub enum Error {
     #[error("database migration error: {0}")]
     Migration(#[from] sqlx::migrate::MigrateError),
     #[error(
-        "database migration stage '{stage}' timed out after {timeout_seconds} seconds; close other Cursor BYOK processes and try again"
+        "database migration stage '{stage}' timed out after {timeout_seconds} seconds; close other My Cursor processes and try again"
     )]
     MigrationTimeout { stage: String, timeout_seconds: u64 },
     #[error("http error: {0}")]

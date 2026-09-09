@@ -36,7 +36,7 @@ export function generatePortableUpdate({ version, repository, assetName, signatu
 
   return {
     version: normalizedVersion,
-    notes: `Cursor BYOK v${normalizedVersion}`,
+    notes: `My Cursor v${normalizedVersion}`,
     pub_date: new Date().toISOString(),
     platforms: {
       "windows-x86_64": {

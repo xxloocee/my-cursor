@@ -126,8 +126,8 @@ impl CaManager {
         let mut params = CertificateParams::new(Vec::<String>::new())
             .map_err(|error| Error::Config(format!("create CA parameters: {error}")))?;
         let mut name = DistinguishedName::new();
-        name.push(DnType::CommonName, "Cursor BYOK Local CA");
-        name.push(DnType::OrganizationName, "Cursor BYOK");
+        name.push(DnType::CommonName, "My Cursor Local CA");
+        name.push(DnType::OrganizationName, "My Cursor");
         params.distinguished_name = name;
         params.is_ca = IsCa::Ca(BasicConstraints::Constrained(0));
         params.key_usages = vec![

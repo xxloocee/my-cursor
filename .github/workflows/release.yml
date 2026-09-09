@@ -142,7 +142,7 @@ jobs:
         with:
           projectPath: apps/desktop
           tagName: v__VERSION__
-          releaseName: Cursor BYOK v__VERSION__
+          releaseName: My Cursor v__VERSION__
           releaseBody: ${{ contains(needs.prepare.outputs.version, '-') && 'Beta release. Download the installer for your platform from the assets below.' || 'Download the installer for your platform from the assets below.' }}
           releaseDraft: true
           prerelease: false
@@ -224,7 +224,7 @@ jobs:
             --repository "${GITHUB_REPOSITORY}" \
             --assets-dir legacy-update \
             --output legacy-update/update.json \
-            --notes "Cursor BYOK v${VERSION}"
+            --notes "My Cursor v${VERSION}"
 
       - name: Generate signed Windows portable update manifest
         env:

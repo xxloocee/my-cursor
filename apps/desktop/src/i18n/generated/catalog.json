@@ -790,7 +790,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 450,
+          "line": 452,
           "column": 14
         }
       ]
@@ -877,8 +877,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 425,
-          "column": 48
+          "line": 426,
+          "column": 50
         }
       ]
     },
@@ -996,18 +996,6 @@
         }
       ]
     },
-    "29fbbef32a6eb58b": {
-      "source": "不再显示此广告",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "shell/AppLayout.tsx",
-          "line": 246,
-          "column": 14
-        }
-      ]
-    },
     "2a2773134a829016": {
       "source": "按历史 LLM 调用记录汇总，进行中的调用不计入。",
       "kind": "text",
@@ -1116,17 +1104,12 @@
         },
         {
           "file": "shared/ui/Modal.tsx",
-          "line": 41,
-          "column": 191
+          "line": 42,
+          "column": 200
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 236,
-          "column": 20
-        },
-        {
-          "file": "shell/AppLayout.tsx",
-          "line": 247,
+          "line": 118,
           "column": 20
         }
       ]
@@ -1243,7 +1226,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 235,
+          "line": 117,
           "column": 14
         }
       ]
@@ -1282,7 +1265,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 472,
+          "line": 474,
           "column": 28
         }
       ]
@@ -1294,7 +1277,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 486,
+          "line": 488,
           "column": 81
         }
       ]
@@ -1371,11 +1354,6 @@
           "file": "shared/ui/ConfirmDialog.tsx",
           "line": 4,
           "column": 110
-        },
-        {
-          "file": "shell/AppLayout.tsx",
-          "line": 248,
-          "column": 21
         }
       ]
     },
@@ -1584,18 +1562,6 @@
         }
       ]
     },
-    "3da0bf1610ff5db5": {
-      "source": "推荐内容",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "shell/ads/AdMenu.tsx",
-          "line": 45,
-          "column": 56
-        }
-      ]
-    },
     "3f6c25aa329163a4": {
       "source": "原接口路径会追加到此服务地址。",
       "kind": "text",
@@ -1638,7 +1604,7 @@
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
           "line": 423,
-          "column": 74
+          "column": 82
         }
       ]
     },
@@ -1965,13 +1931,8 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "shell/ads/AdMenu.tsx",
-          "line": 55,
-          "column": 99
-        },
-        {
           "file": "shell/AppLayout.tsx",
-          "line": 202,
+          "line": 86,
           "column": 67
         }
       ]
@@ -1983,12 +1944,12 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 469,
+          "line": 471,
           "column": 30
         },
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 488,
+          "line": 490,
           "column": 42
         }
       ]
@@ -2087,7 +2048,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 222,
+          "line": 106,
           "column": 51
         }
       ]
@@ -2137,18 +2098,6 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 257,
           "column": 47
-        }
-      ]
-    },
-    "550eddc3c7fefa99": {
-      "source": "推广",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "shell/ads/FloatingAd.tsx",
-          "line": 63,
-          "column": 48
         }
       ]
     },
@@ -2280,7 +2229,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 452,
+          "line": 454,
           "column": 21
         }
       ]
@@ -2335,20 +2284,6 @@
         }
       ]
     },
-    "5d59857bf039cac9": {
-      "source": "Cursor 助手 v{version}",
-      "kind": "template",
-      "placeholders": [
-        "version"
-      ],
-      "refs": [
-        {
-          "file": "shell/AppHeader.tsx",
-          "line": 34,
-          "column": 18
-        }
-      ]
-    },
     "5f8d556a9c47da3c": {
       "source": "已关闭开机启动",
       "kind": "text",
@@ -2358,18 +2293,6 @@
           "file": "features/settings/AppLifecycleSettingsCard.tsx",
           "line": 59,
           "column": 40
-        }
-      ]
-    },
-    "5f9acfb945229062": {
-      "source": "你确认不想再看到此广告吗？",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "shell/AppLayout.tsx",
-          "line": 252,
-          "column": 11
         }
       ]
     },
@@ -2540,7 +2463,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 521,
+          "line": 510,
           "column": 43
         }
       ]
@@ -2679,7 +2602,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 79,
+          "line": 52,
           "column": 47
         }
       ]
@@ -2867,7 +2790,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 516,
+          "line": 505,
           "column": 43
         }
       ]
@@ -3021,7 +2944,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 450,
+          "line": 449,
           "column": 21
         }
       ]
@@ -3254,7 +3177,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 75,
+          "line": 48,
           "column": 29
         }
       ]
@@ -3285,18 +3208,6 @@
           "file": "features/calls/CallTable.tsx",
           "line": 58,
           "column": 15
-        }
-      ]
-    },
-    "8df48894086d6fbd": {
-      "source": "原因（可选）",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "shell/AppLayout.tsx",
-          "line": 254,
-          "column": 16
         }
       ]
     },
@@ -3369,7 +3280,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 73,
+          "line": 46,
           "column": 39
         }
       ]
@@ -3395,6 +3306,18 @@
           "file": "features/settings/SettingsPage.tsx",
           "line": 162,
           "column": 7
+        }
+      ]
+    },
+    "92d8e2d52d609256": {
+      "source": "登录系统后自动启动 My Cursor。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/AppLifecycleSettingsCard.tsx",
+          "line": 116,
+          "column": 17
         }
       ]
     },
@@ -3424,7 +3347,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 222,
+          "line": 106,
           "column": 62
         }
       ]
@@ -3518,7 +3441,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 471,
+          "line": 473,
           "column": 25
         }
       ]
@@ -3568,7 +3491,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 241,
+          "line": 123,
           "column": 11
         }
       ]
@@ -3855,8 +3778,8 @@
         },
         {
           "file": "shared/ui/Modal.tsx",
-          "line": 41,
-          "column": 214
+          "line": 42,
+          "column": 223
         }
       ]
     },
@@ -3931,7 +3854,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 237,
+          "line": 119,
           "column": 21
         }
       ]
@@ -4181,12 +4104,12 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 268,
+          "line": 129,
           "column": 64
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 268,
+          "line": 129,
           "column": 125
         }
       ]
@@ -4200,7 +4123,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 434,
+          "line": 435,
           "column": 84
         }
       ]
@@ -4412,18 +4335,6 @@
         }
       ]
     },
-    "b8c9b486c83b5778": {
-      "source": "不再显示广告",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "shell/ads/AdMenu.tsx",
-          "line": 71,
-          "column": 24
-        }
-      ]
-    },
     "b9670c85a4ab939e": {
       "source": "路由",
       "kind": "text",
@@ -4489,7 +4400,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 483,
+          "line": 485,
           "column": 81
         }
       ]
@@ -4535,18 +4446,6 @@
           "file": "features/settings/SettingsPage.tsx",
           "line": 274,
           "column": 40
-        }
-      ]
-    },
-    "bda62ce1d5e4ace9": {
-      "source": "可以告诉我们原因",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "shell/AppLayout.tsx",
-          "line": 259,
-          "column": 24
         }
       ]
     },
@@ -4906,18 +4805,6 @@
         }
       ]
     },
-    "d34335433395cd3a": {
-      "source": "登录系统后自动启动 Cursor BYOK。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/AppLifecycleSettingsCard.tsx",
-          "line": 116,
-          "column": 17
-        }
-      ]
-    },
     "d3716cc5a2f5a810": {
       "source": "服务器地址",
       "kind": "text",
@@ -4947,7 +4834,7 @@
         },
         {
           "file": "shared/ui/Modal.tsx",
-          "line": 99,
+          "line": 100,
           "column": 153
         }
       ]
@@ -5081,7 +4968,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 188,
+          "line": 72,
           "column": 54
         }
       ]
@@ -5199,7 +5086,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 460,
+          "line": 462,
           "column": 11
         }
       ]
@@ -5245,7 +5132,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 77,
+          "line": 50,
           "column": 29
         }
       ]
@@ -5314,18 +5201,6 @@
           "file": "features/models/CursorModelTestResult.tsx",
           "line": 34,
           "column": 7
-        }
-      ]
-    },
-    "e1295adecbb77755": {
-      "source": "关闭广告",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "shell/ads/FloatingAd.tsx",
-          "line": 64,
-          "column": 66
         }
       ]
     },
@@ -5422,7 +5297,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 74,
+          "line": 47,
           "column": 44
         }
       ]
@@ -5586,8 +5461,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 427,
-          "column": 98
+          "line": 428,
+          "column": 100
         }
       ]
     },
@@ -5725,7 +5600,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 433,
+          "line": 434,
           "column": 84
         }
       ]
@@ -5829,7 +5704,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 78,
+          "line": 51,
           "column": 46
         }
       ]
@@ -6103,7 +5978,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 80,
+          "line": 53,
           "column": 48
         }
       ]

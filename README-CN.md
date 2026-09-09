@@ -1,30 +1,30 @@
 <div align="center">
 
-# cursor-byok
+# My Cursor
 
-cursor-byok 是一个运行在本机的 Cursor 模型网关，帮助你在 Cursor 中使用自己配置的模型服务。
+My Cursor 是一个运行在本机的 Cursor 模型网关，帮助你在 Cursor 中使用自己配置的模型服务。
 
-[English README](./README.md) · [使用指南](https://docs.leokun.cn) · [下载](https://github.com/leookun/cursor-byok/releases/latest) · [提交问题](https://github.com/leookun/cursor-byok/issues)
+[English README](./README.md) · [下载](https://github.com/xxloocee/my-cursor/releases/latest) · [提交问题](https://github.com/xxloocee/my-cursor/issues)
 
-[![Release](https://img.shields.io/github/v/release/leookun/cursor-byok?style=flat-square)](https://github.com/leookun/cursor-byok/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/leookun/cursor-byok/total?style=flat-square)](https://github.com/leookun/cursor-byok/releases)
-[![License](https://img.shields.io/github/license/leookun/cursor-byok?style=flat-square)](./LICENSE)
-[![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey?style=flat-square)](https://github.com/leookun/cursor-byok/releases/latest)
+[![Release](https://img.shields.io/github/v/release/xxloocee/my-cursor?style=flat-square)](https://github.com/xxloocee/my-cursor/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/xxloocee/my-cursor/total?style=flat-square)](https://github.com/xxloocee/my-cursor/releases)
+[![License](https://img.shields.io/github/license/xxloocee/my-cursor?style=flat-square)](./LICENSE)
+[![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey?style=flat-square)](https://github.com/xxloocee/my-cursor/releases/latest)
 
 </div>
 
-![将 cursor-byok 连接到多种模型 API](./images/en-brand-1.png)
-
-![cursor-byok 控制面板](./images/en-home-1.png)
+![将 My Cursor 连接到多种模型 API](./images/en-brand-1.png)
 
 ## 项目简介
 
-cursor-byok 是一个开源的本地模型网关。它在你的设备上运行服务，接收 Cursor 发出的 Agent 请求，将请求转发到你配置的模型服务，并尽可能保留 Cursor Agent 的工具调用、Skills、MCP 和多轮对话能力。
+My Cursor 是一个开源的本地模型网关。它在你的设备上运行服务，接收 Cursor 发出的 Agent 请求，将请求转发到你配置的模型服务，并尽可能保留 Cursor Agent 的工具调用、Skills、MCP 和多轮对话能力。
 
 你可以连接兼容 OpenAI 或 Anthropic 协议的服务，自定义服务地址、模型 ID、API Key 和请求参数，也可以使用 Cursor 平台默认选项之外的模型通道。
 
 > [!IMPORTANT]
-> cursor-byok 免费且开源，但你连接的模型服务商可能会按用量收费。本项目是独立项目，与 Cursor 或其开发者没有关联，也未获得其认可。
+> My Cursor 免费且开源，但你连接的模型服务商可能会按用量收费。本项目是独立项目，与 Cursor 或其开发者没有关联，也未获得其认可。
+
+本项目持续同步 [cursor-byok](https://github.com/leookun/cursor-byok)，上游实现与协议兼容工作归功于原项目贡献者。
 
 ## 主要功能
 
@@ -39,13 +39,11 @@ cursor-byok 是一个开源的本地模型网关。它在你的设备上运行�
 
 ## 快速开始
 
-1. 从 [GitHub Releases](https://github.com/leookun/cursor-byok/releases/latest) 下载适合你操作系统的最新版本。
-2. 启动 cursor-byok，打开 **Cursor 配置**，按提示初始化本地 CA（证书颁发机构）。
+1. 从 [GitHub Releases](https://github.com/xxloocee/my-cursor/releases/latest) 下载适合你操作系统的最新版本。
+2. 启动 My Cursor，打开 **Cursor 配置**，按提示初始化本地 CA（证书颁发机构）。
 3. 在模型设置中添加模型，填写服务地址、API Key 和模型名称，然后保存并运行 **测试**。
-4. 确认测试通过后，保持 cursor-byok 运行。
+4. 确认测试通过后，保持 My Cursor 运行。
 5. **首次升级 Cursor 或首次配置模型后，完全退出并重新启动 Cursor，然后新开一个对话**。在模型列表中选择已配置的模型，开始使用 Agent。
-
-完整的安装步骤、配置说明和常见问题，请参阅[中文使用指南](https://docs.leokun.cn/zh/docs)。
 
 > [!TIP]
 > 首次升级 Cursor 或首次完成配置后，必须完全退出并重新启动 Cursor，再新开一个对话。配置前已经打开的对话不会加载新连接；使用自定义模型时，请在模型列表中手动选择该模型，不要选择 **Auto**。
@@ -53,8 +51,6 @@ cursor-byok 是一个开源的本地模型网关。它在你的设备上运行�
 ## 模型配置
 
 每个模型配置都是独立的上游通道，可以单独设置服务商、协议、凭据和生成参数。
-
-![模型设置页面](./images/en-model-1.png)
 
 ### 类型与协议选择
 
@@ -82,7 +78,7 @@ GPT 系列建议使用 **Responses API**。如果使用 Chat Completions，可�
 
 ## TAB 补全服务
 
-Cursor 的 Tab 补全由独立的 TAB 服务处理，不经过模型通道。你可以在 **系统设置 → TAB 设置** 中选择以下模式：
+Cursor 的 Tab 补全由独立的 TAB 服务处理，不经过模型通道。你可以在 **系统设置 -> TAB 设置** 中选择以下模式：
 
 - **使用公益服务（默认）**：使用项目作者部署的公共服务，无需额外配置。
 - **直连**：直接连接当前 Cursor 账号对应的官方 TAB 服务，适合账号拥有官方额度的情况。
@@ -92,7 +88,7 @@ Cursor 的 Tab 补全由独立的 TAB 服务处理，不经过模型通道。你
 
 ## 与官方账号并存
 
-新版设计支持 cursor-byok 与 Cursor 官方服务并存：
+新版设计支持 My Cursor 与 Cursor 官方服务并存：
 
 - 直接在 Cursor 中登录自己的账号。如果之前使用旧版生成的 fake 账户，请先退出该账户，再登录自己的账号。
 - 账号拥有官方额度时，官方模型和本地模型可以随时切换混用。
@@ -103,13 +99,13 @@ Cursor 的 Tab 补全由独立的 TAB 服务处理，不经过模型通道。你
 
 ```text
 Cursor 客户端
-    │
-    │ Agent 请求与工具结果
-    ▼
-cursor-byok 本地服务
-    │
-    │ OpenAI / Anthropic 兼容请求
-    ▼
+    |
+    | Agent 请求与工具结果
+    v
+My Cursor 本地服务
+    |
+    | OpenAI / Anthropic 兼容请求
+    v
 你配置的模型 API
 ```
 
@@ -118,12 +114,12 @@ API Key、模型配置和应用设置保存在本机。模型请求仍会发送�
 ## 项目结构
 
 ```text
-cursor-byok/
+my-cursor/
 ├── apps/
 │   ├── desktop/
 │   │   ├── src/
 │   │   │   ├── features/ # 首页、模型、调用记录与设置
-│   │   │   ├── shell/    # 窗口框架、页面布局与广告外壳
+│   │   │   ├── shell/    # 窗口框架与页面布局
 │   │   │   ├── shared/   # UI、虚拟列表、状态、API 与平台能力
 │   │   │   ├── i18n/     # 本地化运行时与语言目录
 │   │   │   └── styles/   # 全局主题与排版令牌
@@ -203,20 +199,17 @@ make build-docker    # 构建 Docker 镜像
 
 项目将继续改进模型兼容性、Agent 工具、本地运行稳定性和自托管体验，并探索支持更多 IDE、聊天和 Agent 工作流。
 
-计划与进展请参阅[发布路线图](https://github.com/leookun/cursor-byok/discussions/32)。
-
 ## 社区与反馈
 
-- [中文使用指南](https://docs.leokun.cn/zh/docs)
-- [GitHub Issues](https://github.com/leookun/cursor-byok/issues)
-- [Telegram 社区](https://t.me/cursor_byok)
-- QQ 群：`1095916242`、`1094411438`、`1095918002`、`1094419321`
-
-提交问题时，请附上操作系统、cursor-byok 版本、模型类型、请求协议、已脱敏的服务地址、错误信息和复现步骤。请勿公开 API Key 或其他凭据。
+请在 [My Cursor Issues](https://github.com/xxloocee/my-cursor/issues) 反馈问题。提交问题时，请附上操作系统、My Cursor 版本、模型类型、请求协议、已脱敏的服务地址、错误信息和复现步骤。请勿公开 API Key 或其他凭据。
 
 ## 参与贡献
 
 欢迎提交 Issue 和 Pull Request。提交代码前请先阅读项目中的开发说明，并运行 `make check` 确认格式、测试和前端构建检查通过。
+
+## 上游贡献者
+
+My Cursor 包含 [cursor-byok 贡献者](https://github.com/leookun/cursor-byok/graphs/contributors) 的工作。
 
 ## 许可证
 

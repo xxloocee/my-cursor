@@ -123,7 +123,7 @@ fn create_main_window(
         .parse()
         .expect("local frontend URL");
     let builder = WebviewWindowBuilder::new(app, MAIN_WINDOW_LABEL, WebviewUrl::External(url))
-        .title("Cursor BYOK")
+        .title("My Cursor")
         .inner_size(820.0, 558.0)
         .min_inner_size(820.0, 558.0)
         .center()
