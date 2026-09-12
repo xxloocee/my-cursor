@@ -1,6 +1,24 @@
-import { readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { readFile, readdir, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+
+const requiredPlatforms = [
+  "darwin-aarch64",
+  "darwin-x86_64",
+  "linux-aarch64",
+  "linux-x86_64",
+  "windows-aarch64",
+  "windows-x86_64",
+];
+
+const manifestOwners = new Map([
+  ["tauri-update-macos-aarch64", "darwin-aarch64"],
+  ["tauri-update-macos-x86_64", "darwin-x86_64"],
+  ["tauri-update-linux-aarch64", "linux-aarch64"],
+  ["tauri-update-linux-x86_64", "linux-x86_64"],
+  ["tauri-update-windows-aarch64", "windows-aarch64"],
+  ["tauri-update-windows-x86_64", "windows-x86_64"],
+]);
 
 function readOptions(args) {
   const options = new Map();
@@ -21,6 +39,65 @@ function required(options, name) {
   return value;
 }
 
+export function mergeTauriUpdates(updates, version) {
+  if (updates.length === 0) {
+    throw new Error("no Tauri updater manifests were found");
+  }
+
+  const merged = {
+    version,
+    notes: updates[0].manifest.notes,
+    pub_date: updates
+      .map(({ manifest }) => manifest.pub_date)
+      .filter(Boolean)
+      .sort()
+      .at(-1),
+    platforms: {},
+  };
+
+  for (const { owner, manifest } of updates) {
+    if (!requiredPlatforms.includes(owner)) {
+      throw new Error(`unknown updater manifest owner: ${owner}`);
+    }
+    if (manifest.version !== version) {
+      throw new Error(
+        `updater manifest version ${manifest.version ?? "is missing"}; expected ${version}`,
+      );
+    }
+    if (!manifest.platforms || typeof manifest.platforms !== "object") {
+      throw new Error("updater manifest has no platforms");
+    }
+    if (!Object.hasOwn(manifest.platforms, owner)) {
+      throw new Error(`updater manifest for ${owner} has no base platform entry`);
+    }
+
+    for (const [platform, entry] of Object.entries(manifest.platforms)) {
+      if (platform === owner || platform.startsWith(`${owner}-`)) {
+        merged.platforms[platform] = entry;
+      }
+    }
+  }
+
+  return merged;
+}
+
+async function readTauriUpdates(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const manifests = entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => ({
+      name: entry.name,
+      path: join(directory, entry.name, "latest.json"),
+    }))
+    .sort(({ name: left }, { name: right }) => left.localeCompare(right));
+  return Promise.all(
+    manifests.map(async ({ name, path }) => ({
+      owner: manifestOwners.get(name),
+      manifest: JSON.parse(await readFile(path, "utf8")),
+    })),
+  );
+}
+
 export function normalizeTauriUpdate(manifest, release, repository, version) {
   if (manifest.version !== version) {
     throw new Error(
@@ -34,6 +111,15 @@ export function normalizeTauriUpdate(manifest, release, repository, version) {
   }
   if (!manifest.platforms || typeof manifest.platforms !== "object") {
     throw new Error("updater manifest has no platforms");
+  }
+
+  const missingPlatforms = requiredPlatforms.filter(
+    (platform) => !manifest.platforms[platform],
+  );
+  if (missingPlatforms.length > 0) {
+    throw new Error(
+      `updater manifest is missing required platforms: ${missingPlatforms.join(", ")}`,
+    );
   }
 
   const assetsBySourceUrl = new Map();
@@ -67,6 +153,7 @@ export function normalizeTauriUpdate(manifest, release, repository, version) {
 
 async function main() {
   const options = readOptions(process.argv.slice(2));
+  const manifestsDir = resolve(required(options, "manifests-dir"));
   const manifestPath = resolve(required(options, "manifest"));
   const releasePath = resolve(required(options, "release"));
   const repository = required(options, "repository");
@@ -79,7 +166,10 @@ async function main() {
     throw new Error(`invalid semantic version: ${version}`);
   }
 
-  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  const manifest = mergeTauriUpdates(
+    await readTauriUpdates(manifestsDir),
+    version,
+  );
   const release = JSON.parse(await readFile(releasePath, "utf8"));
   const normalized = normalizeTauriUpdate(
     manifest,

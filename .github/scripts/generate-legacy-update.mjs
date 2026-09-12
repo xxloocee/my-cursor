@@ -3,10 +3,10 @@ import { stat, readFile, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 
 const assetSpecs = [
-  ["macos-arm64", ".tar.gz"],
-  ["macos-amd64", ".tar.gz"],
-  ["windows-amd64", ".zip"],
-  ["linux-amd64", ".tar.gz"],
+  ["macos-arm64", "macos-arm64", ".tar.gz"],
+  ["macos-amd64", "macos-x64", ".tar.gz"],
+  ["windows-amd64", "windows-amd64", ".zip"],
+  ["linux-amd64", "linux-amd64", ".tar.gz"],
 ];
 
 function readOptions(args) {
@@ -49,8 +49,8 @@ async function main() {
   }
 
   const platforms = {};
-  for (const [platform, suffix] of assetSpecs) {
-    const filename = `cursor-byok-${version}-${platform}${suffix}`;
+  for (const [platform, filenamePlatform, suffix] of assetSpecs) {
+    const filename = `MyCursor-${version}-${filenamePlatform}${suffix}`;
     const path = join(assetsDir, filename);
     const info = await stat(path);
     if (!info.isFile()) throw new Error(`release asset is not a file: ${path}`);

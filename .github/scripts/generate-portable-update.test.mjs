@@ -6,7 +6,7 @@ test("generates a signed Windows portable updater manifest", () => {
   const manifest = generatePortableUpdate({
     version: "v1.2.3-beta.1",
     repository: "owner/repository",
-    assetName: "cursor-byok-1.2.3-beta.1-windows-amd64.zip",
+    assetName: "MyCursor-1.2.3-beta.1-windows-amd64.zip",
     signature: "signed-payload\n",
   });
 
@@ -15,7 +15,7 @@ test("generates a signed Windows portable updater manifest", () => {
   assert.equal(manifest.platforms["windows-x86_64"].signature, "signed-payload");
   assert.equal(
     manifest.platforms["windows-x86_64"].url,
-    "https://github.com/owner/repository/releases/download/v1.2.3-beta.1/cursor-byok-1.2.3-beta.1-windows-amd64.zip",
+    "https://github.com/owner/repository/releases/download/v1.2.3-beta.1/MyCursor-1.2.3-beta.1-windows-amd64.zip",
   );
 });
 

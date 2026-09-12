@@ -1,5 +1,5 @@
 {
   "bundle": {
-    "targets": ["app"]
+    "targets": ["app", "dmg"]
   }
 }

@@ -27,6 +27,26 @@ Release through `.github/workflows/release.yml`. Preserve both updater formats: 
 - Keep ordinary `main` pushes and manual workflow dispatch disabled as release triggers. An authorized user pushes the matching tag only after the release commit is present on `origin/main`.
 - Never republish an already published version. Select a new version instead.
 
+## Release assets and notes
+
+Use `MyCursor-<version>-<platform>-<architecture>.<extension>` for installers and packages. Keep the Windows portable executable names aligned with the reference format:
+
+```text
+MyCursor-<version>-amd64.exe
+MyCursor-<version>-arm64.exe
+MyCursor-<version>-linux-amd64.deb
+MyCursor-<version>-linux-arm64.deb
+MyCursor-<version>-macos-arm64.dmg
+MyCursor-<version>-macos-x64.dmg
+MyCursor-<version>-windows-arm64-setup.exe
+MyCursor-<version>-windows-x64-setup.exe
+SHA256SUMS
+```
+
+Keep updater-only archives, signatures, `latest.json`, `portable-latest.json`, and `update.json` in the Release even though they are not primary manual downloads. Every Release body must include a package guide and generated change notes. Beta titles or bodies must visibly say Beta.
+
+Each matrix job must upload its local `latest.json` as a workflow artifact. Merge those manifests in the single finalize job and require all six macOS, Linux, and Windows x64/ARM64 base platform keys before publishing; do not trust the concurrently updated draft Release copy to be complete.
+
 ## Release sources
 
 Keep the desktop version identical in the manifests and their locks:
@@ -39,7 +59,8 @@ cursor-byok/
 │   ├── package-lock.json
 │   └── src-tauri/
 │       ├── Cargo.toml
-│       └── tauri.conf.json
+│       ├── tauri.conf.json
+│       └── tauri.macos.conf.json
 ├── scripts/cursor-proto/proto/
 │   ├── agent_v1.proto
 │   └── aiserver_v1.proto
@@ -73,5 +94,7 @@ After the user explicitly authorizes publication:
 2. Create the matching tag on that commit, for example `v0.1.0-beta.1`, and push only that tag. This tag push is the publication trigger.
 3. Follow the triggered `Release desktop app` run through completion. Report the run URL and stop on failure; diagnose locally before asking the user to authorize another live attempt.
 4. Verify `v<version>` exists, is published rather than draft, has `prerelease: false`, and is the repository's Latest release.
-5. Verify the Release contains signed Tauri updater artifacts plus `latest.json`, and the legacy platform archives plus `update.json`.
-6. For a beta, report clearly that it is a test version even though GitHub represents it as a normal Latest Release.
+5. Verify the Release contains signed Tauri updater artifacts plus `latest.json`, and the legacy platform archives plus `update.json`. Confirm `latest.json` contains the six primary platform keys for macOS, Linux, and Windows on both x64 and ARM64.
+6. Verify all eight primary packages and `SHA256SUMS` exist with the documented names.
+7. Verify the Release body contains the package guide and generated change notes.
+8. For a beta, report clearly that it is a test version even though GitHub represents it as a normal Latest Release.

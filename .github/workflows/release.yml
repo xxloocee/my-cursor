@@ -77,20 +77,36 @@ jobs:
         include:
           - platform: linux-x86_64
             os: ubuntu-22.04
-            args: ""
+            args: "--bundles deb,appimage"
             target: ""
+            release_asset_pattern: "MyCursor-[version]-linux-amd64[ext]"
+          - platform: linux-aarch64
+            os: ubuntu-24.04-arm
+            args: "--bundles deb,appimage"
+            target: ""
+            release_asset_pattern: "MyCursor-[version]-linux-arm64[ext]"
           - platform: windows-x86_64
             os: windows-latest
             args: "--bundles nsis"
             target: ""
+            release_asset_pattern: "MyCursor-[version]-windows-x64[setup][ext]"
+            portable_arch: amd64
+          - platform: windows-aarch64
+            os: windows-11-arm
+            args: "--bundles nsis"
+            target: ""
+            release_asset_pattern: "MyCursor-[version]-windows-arm64[setup][ext]"
+            portable_arch: arm64
           - platform: macos-aarch64
             os: macos-15
-            args: "--target aarch64-apple-darwin"
+            args: "--target aarch64-apple-darwin --bundles app,dmg"
             target: aarch64-apple-darwin
+            release_asset_pattern: "MyCursor-[version]-macos-arm64[ext]"
           - platform: macos-x86_64
             os: macos-15-intel
-            args: "--target x86_64-apple-darwin"
+            args: "--target x86_64-apple-darwin --bundles app,dmg"
             target: x86_64-apple-darwin
+            release_asset_pattern: "MyCursor-[version]-macos-x64[ext]"
 
     runs-on: ${{ matrix.os }}
 
@@ -98,7 +114,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Linux system dependencies
-        if: matrix.platform == 'linux-x86_64'
+        if: startsWith(matrix.platform, 'linux-')
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
@@ -132,12 +148,35 @@ jobs:
         with:
           projectPath: apps/desktop
           tagName: v__VERSION__
-          releaseName: My Cursor v__VERSION__
-          releaseBody: ${{ contains(needs.prepare.outputs.version, '-') && 'Beta release. Download the installer for your platform from the assets below.' || 'Download the installer for your platform from the assets below.' }}
+          releaseName: ${{ contains(needs.prepare.outputs.version, '-') && format('My Cursor v{0} Beta', needs.prepare.outputs.version) || format('My Cursor v{0}', needs.prepare.outputs.version) }}
+          releaseBody: |
+            ## 下载说明
+
+            | 系统 | 架构 | 安装包 | 免安装版 |
+            | --- | --- | --- | --- |
+            | Windows | x64 | `MyCursor-${{ needs.prepare.outputs.version }}-windows-x64-setup.exe` | `MyCursor-${{ needs.prepare.outputs.version }}-amd64.exe` |
+            | Windows | ARM64 | `MyCursor-${{ needs.prepare.outputs.version }}-windows-arm64-setup.exe` | `MyCursor-${{ needs.prepare.outputs.version }}-arm64.exe` |
+            | Linux | amd64 | `MyCursor-${{ needs.prepare.outputs.version }}-linux-amd64.deb` | - |
+            | Linux | arm64 | `MyCursor-${{ needs.prepare.outputs.version }}-linux-arm64.deb` | - |
+            | macOS | Apple Silicon | `MyCursor-${{ needs.prepare.outputs.version }}-macos-arm64.dmg` | - |
+            | macOS | Intel | `MyCursor-${{ needs.prepare.outputs.version }}-macos-x64.dmg` | - |
+
+            使用教程：[https://doc.ergouzi.life/apps/my-cursor](https://doc.ergouzi.life/apps/my-cursor)
+
+            下载 `SHA256SUMS` 可校验安装包完整性。其余归档、签名文件以及 `latest.json`、`portable-latest.json`、`update.json` 供应用自动更新使用。
           releaseDraft: true
           prerelease: false
+          generateReleaseNotes: true
           uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
+          releaseAssetNamePattern: ${{ matrix.release_asset_pattern }}
           args: ${{ matrix.args }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tauri-update-${{ matrix.platform }}
+          path: latest.json
+          if-no-files-found: error
 
       - name: Package legacy Linux updater asset
         if: matrix.platform == 'linux-x86_64'
@@ -146,7 +185,7 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           mkdir -p legacy-update
-          tar -czf "legacy-update/cursor-byok-${VERSION}-linux-amd64.tar.gz" -C target/release cursor-byok-desktop
+          tar -czf "legacy-update/MyCursor-${VERSION}-linux-amd64.tar.gz" -C target/release cursor-byok-desktop
 
       - name: Package and sign legacy Windows updater asset
         if: matrix.platform == 'windows-x86_64'
@@ -157,7 +196,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           New-Item -ItemType Directory -Force legacy-update | Out-Null
-          $asset = "legacy-update/cursor-byok-$env:VERSION-windows-amd64.zip"
+          $asset = "legacy-update/MyCursor-$env:VERSION-windows-amd64.zip"
           Compress-Archive -LiteralPath target/release/cursor-byok-desktop.exe -DestinationPath $asset
           Push-Location apps/desktop
           npm exec tauri signer sign -- "../../$asset"
@@ -181,14 +220,32 @@ jobs:
           test -n "${archive}"
           legacy_platform=macos-arm64
           if [[ "${{ matrix.platform }}" = "macos-x86_64" ]]; then
-            legacy_platform=macos-amd64
+            legacy_platform=macos-x64
           fi
-          cp "${archive}" "legacy-update/cursor-byok-${VERSION}-${legacy_platform}.tar.gz"
+          cp "${archive}" "legacy-update/MyCursor-${VERSION}-${legacy_platform}.tar.gz"
+
+      - name: Package Windows portable executable
+        if: startsWith(matrix.platform, 'windows-')
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PORTABLE_ARCH: ${{ matrix.portable_arch }}
+        run: |
+          New-Item -ItemType Directory -Force release-assets | Out-Null
+          Copy-Item -LiteralPath target/release/cursor-byok-desktop.exe -Destination "release-assets/MyCursor-$env:VERSION-$env:PORTABLE_ARCH.exe"
 
       - uses: actions/upload-artifact@v4
+        if: matrix.platform == 'linux-x86_64' || matrix.platform == 'windows-x86_64' || contains(matrix.platform, 'macos')
         with:
           name: legacy-update-${{ matrix.platform }}
           path: legacy-update/*
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: startsWith(matrix.platform, 'windows-')
+        with:
+          name: primary-release-${{ matrix.platform }}
+          path: release-assets/*
           if-no-files-found: error
 
   finalize:
@@ -205,6 +262,23 @@ jobs:
           path: legacy-update
           merge-multiple: true
 
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: primary-release-*
+          path: primary-release
+          merge-multiple: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tauri-update-*
+          path: tauri-update-input
+
+      - name: Upload Windows portable executables
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: gh release upload "v${VERSION}" primary-release/* --clobber
+
       - name: Generate legacy update manifest
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
@@ -220,7 +294,7 @@ jobs:
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          asset="cursor-byok-${VERSION}-windows-amd64.zip"
+          asset="MyCursor-${VERSION}-windows-amd64.zip"
           test -f "legacy-update/${asset}"
           test -f "legacy-update/${asset}.sig"
           node .github/scripts/generate-portable-update.mjs \
@@ -242,13 +316,8 @@ jobs:
           )
           test -n "${release_id}"
           gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}" > tauri-update/release.json
-          asset_id=$(node -p 'require("./tauri-update/release.json").assets.find(({ name }) => name === "latest.json")?.id ?? ""')
-          test -n "${asset_id}"
-          gh api \
-            -H "Accept: application/octet-stream" \
-            "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}" \
-            > tauri-update/latest.json
           node .github/scripts/normalize-tauri-update.mjs \
+            --manifests-dir tauri-update-input \
             --manifest tauri-update/latest.json \
             --release tauri-update/release.json \
             --repository "${GITHUB_REPOSITORY}" \
@@ -265,6 +334,35 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: gh release upload "v${VERSION}" legacy-update/* --clobber
+
+      - name: Generate and upload SHA256 checksums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        shell: bash
+        run: |
+          assets=(
+            "MyCursor-${VERSION}-amd64.exe"
+            "MyCursor-${VERSION}-arm64.exe"
+            "MyCursor-${VERSION}-linux-amd64.deb"
+            "MyCursor-${VERSION}-linux-arm64.deb"
+            "MyCursor-${VERSION}-macos-arm64.dmg"
+            "MyCursor-${VERSION}-macos-x64.dmg"
+            "MyCursor-${VERSION}-windows-arm64-setup.exe"
+            "MyCursor-${VERSION}-windows-x64-setup.exe"
+          )
+          patterns=()
+          for asset in "${assets[@]}"; do
+            patterns+=(--pattern "${asset}")
+          done
+          mkdir -p checksum-assets
+          gh release download "v${VERSION}" "${patterns[@]}" --dir checksum-assets
+          test "$(find checksum-assets -maxdepth 1 -type f | wc -l)" -eq "${#assets[@]}"
+          (
+            cd checksum-assets
+            sha256sum "${assets[@]}" | sort -k2
+          ) > SHA256SUMS
+          gh release upload "v${VERSION}" SHA256SUMS --clobber
 
       - name: Publish the completed release
         env:
