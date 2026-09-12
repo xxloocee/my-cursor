@@ -1,49 +1,90 @@
+<div align="center">
+
 # My Cursor
 
-<img width="820" alt="My Cursor 主界面" src="assets/cursor/my-cursor-main.png" />
+My Cursor is a local implementation of Cursor's backend.
 
-<img width="820" alt="模型配置列表" src="assets/cursor/model-list.png" />
+[Download](https://github.com/xxloocee/my-cursor/releases/latest) · [Report an Issue](https://github.com/xxloocee/my-cursor/issues) · [中文版本说明](./README-CN.md)
 
-<img width="820" alt="模型编辑表单" src="assets/cursor/model-form.png" />
+[![Release](https://img.shields.io/github/v/release/xxloocee/my-cursor?style=flat-square)](https://github.com/xxloocee/my-cursor/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/xxloocee/my-cursor/total?style=flat-square)](https://github.com/xxloocee/my-cursor/releases)
+[![License](https://img.shields.io/github/license/xxloocee/my-cursor?style=flat-square)](./LICENSE)
+[![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey?style=flat-square)](https://github.com/xxloocee/my-cursor/releases/latest)
 
-My Cursor 是一款用于管理 Cursor 本地服务与自定义模型 API 的桌面工具。
+</div>
 
-## 功能
+![Connect My Cursor to a wide range of model APIs](./images/en-brand-1.png)
 
-- 一键启动或停止本地服务，并查看当前运行状态；
-- 在本地服务模式与直连 Cursor 模式之间切换；
-- 管理 OpenAI、Anthropic 兼容模型的接口地址、密钥、模型标识和请求参数；
-- 支持模型配置的新增、编辑、复制、连通性测试和批量测试；
-- 展示会话数、Token 消耗、缓存命中率和费用估算；
-- 集中管理本地配置、运行日志和版本更新。
+## About
 
-## 开发与运行
+My Cursor is an open-source local model gateway for Cursor. It runs a service on your machine that connects Cursor to the model APIs you configure, routes model requests through your own providers, and preserves Cursor Agent capabilities such as tool calling, Skills, and MCP.
 
-项目使用 Go、Wails 和 Vue 构建，常用命令如下：
+You can connect OpenAI- and Anthropic-compatible services, customize endpoints, model IDs, API keys, and request parameters, and use model channels beyond the options built into the platform.
 
-```powershell
-task dev
-task build
+> [!IMPORTANT]
+> My Cursor is free and open source, but the model APIs you connect may charge for usage. This is an independent project and is not affiliated with or endorsed by Cursor or its developers.
+
+This downstream project tracks [cursor-byok](https://github.com/leookun/cursor-byok). The upstream implementation and protocol compatibility work remain credited to its original contributors.
+
+## Features
+
+- **Bring your own model channels:** Configure your own API endpoint, credentials, and model IDs.
+- **Multiple API protocols:** Use OpenAI- and Anthropic-compatible APIs or a custom endpoint.
+- **Model management:** Add, duplicate, edit, reorder, and batch-test multiple model configurations.
+- **Connection benchmarks:** Measure time to first token, generation speed, and inspect raw provider responses.
+- **Agent workflows:** Keep tool calling, Skills, MCP, and multi-turn conversations available.
+- **Session metrics:** Track token usage, cache hit rate, conversation turns, and estimated value.
+- **Cross-platform:** Run on macOS, Windows, and Linux.
+
+## Quick Start
+
+1. Download the latest build for your platform from [GitHub Releases](https://github.com/xxloocee/my-cursor/releases/latest).
+2. Launch My Cursor, open **Model Settings**, and enter the endpoint, API key, and model ID.
+3. Test the model configuration. Once it passes, return to the dashboard and start the service.
+4. After upgrading Cursor or configuring a model for the first time, quit Cursor completely and restart it, then start a new conversation and select the configured model.
+
+## Model Management
+
+Model configurations support both OpenAI and Anthropic API protocols. Each model channel can independently define its context window, maximum output tokens, reasoning effort, custom headers, and additional request parameters.
+
+## How It Works
+
+```text
+Cursor client
+    |
+    | Agent requests and tool results
+    v
+My Cursor local service
+    |
+    | OpenAI- / Anthropic-compatible requests
+    v
+Your model API
 ```
 
-构建 Windows 64 位分发包：
+My Cursor handles protocol adaptation, model request forwarding, tool-call coordination, and conversation state on your machine. API keys and application settings are stored locally; requests are still sent to the model provider you configure.
 
-```powershell
-task build:windows:amd64
-```
+## Why This Project
 
-完整任务定义见 [Taskfile.yml](Taskfile.yml)。
+Many Agent products bundle their tool capabilities with a fixed set of models, subscriptions, and billing options, leaving users limited to the channels offered by the platform.
 
-## 本地数据
+My Cursor is built to return model choice to the user. Developers can make full use of the APIs and credits they already have, choose the models and providers that fit their needs, and self-host related services when required.
 
-默认数据目录为 `~/.cursor-local-assistant-v2/`：
+## Roadmap
 
-- `config.yaml`：运行与模型配置；
-- `history/`：会话记录与使用统计；
-- `logs/`：运行日志。
+The project will continue to improve model compatibility, Agent tooling, local runtime stability, and the self-hosting experience while exploring support for more IDE, chat, and Agent workflows.
 
-## 致谢与许可
+## Community and Support
 
-本项目基于 [cursor-byok](https://github.com/leookun/cursor-byok) 二次开发，感谢原作者的贡献。
+Report product issues in the [My Cursor issue tracker](https://github.com/xxloocee/my-cursor/issues).
 
-项目遵循仓库中的 [LICENSE](LICENSE)。
+## Development and Contributing
+
+Issues and pull requests are welcome. Before submitting changes, install the prerequisites below and run `make check`.
+
+## Upstream Contributors
+
+My Cursor incorporates work from the [cursor-byok contributors](https://github.com/leookun/cursor-byok/graphs/contributors).
+
+## License
+
+This project is open source under the [MIT License](./LICENSE).
