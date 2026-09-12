@@ -458,7 +458,8 @@ fn available_model(model: &ModelConfig) -> AvailableModel {
         &model.display_name,
         &tooltip,
         &contexts,
-        true,
+        model.supports_thinking,
+        model.supports_fast,
     );
     let legacy_slugs = variants
         .iter()
@@ -470,9 +471,9 @@ fn available_model(model: &ModelConfig) -> AvailableModel {
         supports_agent: Some(true),
         degradation_status: Some(0),
         tooltip_data: Some(tooltip.clone()),
-        supports_thinking: Some(true),
-        supports_images: Some(true),
-        supports_max_mode: Some(true),
+        supports_thinking: Some(model.supports_thinking),
+        supports_images: Some(model.supports_images),
+        supports_max_mode: Some(model.supports_thinking),
         client_display_name: Some(model.display_name.clone()),
         server_model_name: Some(model.model_hash.clone()),
         supports_non_max_mode: Some(true),
@@ -482,7 +483,11 @@ fn available_model(model: &ModelConfig) -> AvailableModel {
         inputbox_short_model_name: Some(model.display_name.clone()),
         supports_sandboxing: Some(true),
         supports_cmd_k: Some(false),
-        parameter_definitions: model_parameters(&contexts, true),
+        parameter_definitions: model_parameters(
+            &contexts,
+            model.supports_thinking,
+            model.supports_fast,
+        ),
         variants,
         legacy_slugs,
         named_model_section_index: Some(1),
@@ -514,6 +519,7 @@ fn provider_host(base_url: &str) -> String {
 fn model_parameters(
     contexts: &[(String, String)],
     thinking: bool,
+    fast: bool,
 ) -> Vec<ModelParameterDefinition> {
     let mut parameters = vec![ModelParameterDefinition {
         id: "context".into(),
@@ -553,29 +559,31 @@ fn model_parameters(
             is_cycleable_by_hotkey: Some(true),
         });
     }
-    parameters.push(ModelParameterDefinition {
-        id: "fast".into(),
-        name: "Fast".into(),
-        markdown_tooltip: Some("Significantly faster but consumes more usage".into()),
-        parameter_type: Some(ModelParameterType {
-            boolean_parameter: Some(BooleanParameter {
-                values: vec![
-                    BooleanParameterValue {
-                        value: "false".into(),
-                        display_name: None,
-                        increases_model_cost: None,
-                    },
-                    BooleanParameterValue {
-                        value: "true".into(),
-                        display_name: Some("Fast".into()),
-                        increases_model_cost: Some(true),
-                    },
-                ],
+    if fast {
+        parameters.push(ModelParameterDefinition {
+            id: "fast".into(),
+            name: "Fast".into(),
+            markdown_tooltip: Some("Significantly faster but consumes more usage".into()),
+            parameter_type: Some(ModelParameterType {
+                boolean_parameter: Some(BooleanParameter {
+                    values: vec![
+                        BooleanParameterValue {
+                            value: "false".into(),
+                            display_name: None,
+                            increases_model_cost: None,
+                        },
+                        BooleanParameterValue {
+                            value: "true".into(),
+                            display_name: Some("Fast".into()),
+                            increases_model_cost: Some(true),
+                        },
+                    ],
+                }),
+                enum_parameter: None,
             }),
-            enum_parameter: None,
-        }),
-        is_cycleable_by_hotkey: Some(false),
-    });
+            is_cycleable_by_hotkey: Some(false),
+        });
+    }
     parameters
 }
 
@@ -585,8 +593,9 @@ fn model_variants(
     tooltip: &TooltipData,
     contexts: &[(String, String)],
     thinking: bool,
+    supports_fast: bool,
 ) -> Vec<ModelVariant> {
-    // 非思考模型没有 Effort 轴,变体网格只剩 Context × Fast。
+    // 未声明的能力不进入变体网格，也不会生成对应请求参数。
     let efforts: &[Option<(&str, &str)>] = if thinking {
         &[
             Some(EFFORTS[0]),
@@ -598,10 +607,15 @@ fn model_variants(
     } else {
         &[None]
     };
-    let mut variants = Vec::with_capacity(contexts.len() * efforts.len() * 2);
+    let fast_values: &[Option<bool>] = if supports_fast {
+        &[Some(false), Some(true)]
+    } else {
+        &[None]
+    };
+    let mut variants = Vec::with_capacity(contexts.len() * efforts.len() * fast_values.len());
     for (context, context_name) in contexts {
         for effort in efforts {
-            for fast in [false, true] {
+            for fast in fast_values {
                 variants.push(model_variant(
                     name,
                     display_name,
@@ -609,7 +623,7 @@ fn model_variants(
                     context,
                     context_name,
                     *effort,
-                    fast,
+                    *fast,
                 ));
             }
         }
@@ -624,7 +638,7 @@ fn model_variant(
     context: &str,
     context_name: &str,
     effort: Option<(&str, &str)>,
-    fast: bool,
+    fast: Option<bool>,
 ) -> ModelVariant {
     let mut suffix = Vec::with_capacity(3);
     if context != DEFAULT_CONTEXT {
@@ -633,7 +647,7 @@ fn model_variant(
     if let Some((_, effort_name)) = effort {
         suffix.push(effort_name);
     }
-    if fast {
+    if fast == Some(true) {
         suffix.push("Fast");
     }
     let suffix = suffix.join(" ");
@@ -644,8 +658,9 @@ fn model_variant(
             "{display_name} <span style=\"color: var(--cursor-text-tertiary);\">{suffix}</span>"
         )
     };
-    let is_default =
-        context == DEFAULT_CONTEXT && !fast && effort.is_none_or(|(effort, _)| effort == "high");
+    let is_default = context == DEFAULT_CONTEXT
+        && fast != Some(true)
+        && effort.is_none_or(|(effort, _)| effort == "high");
     let mut parameter_values = vec![ModelParameterValue {
         id: "context".into(),
         value: context.into(),
@@ -656,10 +671,12 @@ fn model_variant(
             value: effort.into(),
         });
     }
-    parameter_values.push(ModelParameterValue {
-        id: "fast".into(),
-        value: fast.to_string(),
-    });
+    if let Some(fast) = fast {
+        parameter_values.push(ModelParameterValue {
+            id: "fast".into(),
+            value: fast.to_string(),
+        });
+    }
     ModelVariant {
         parameter_values,
         display_name: display_name.clone(),
@@ -668,18 +685,22 @@ fn model_variant(
         is_default_non_max_config: is_default.then_some(true),
         tooltip_data: Some(tooltip.clone()),
         display_name_outside_picker: Some(display_name),
-        variant_string_representation: Some(match effort {
-            Some((effort, _)) => {
+        variant_string_representation: Some(match (effort, fast) {
+            (Some((effort, _)), Some(fast)) => {
                 format!("{name}[context={context},reasoning={effort},fast={fast}]")
             }
-            None => format!("{name}[context={context},fast={fast}]"),
+            (Some((effort, _)), None) => {
+                format!("{name}[context={context},reasoning={effort}]")
+            }
+            (None, Some(fast)) => format!("{name}[context={context},fast={fast}]"),
+            (None, None) => format!("{name}[context={context}]"),
         }),
         legacy_slug: Some(format!(
             "{name}-{context}{}{}",
             effort
                 .map(|(effort, _)| format!("-{effort}"))
                 .unwrap_or_default(),
-            if fast { "-fast" } else { "" }
+            if fast == Some(true) { "-fast" } else { "" }
         )),
     }
 }
@@ -694,9 +715,16 @@ fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
     let tooltip = TooltipData {
         markdown_content: model.description.clone(),
     };
-    // Effort 与上下文档位由宿主统一提供,与内置模型一致;插件不再声明这两项。
+    // 插件协议目前只声明图片能力；不要替插件猜测推理或 Fast 能力。
     let contexts = context_options(None);
-    let variants = model_variants(&model.id, &model.display_name, &tooltip, &contexts, true);
+    let variants = model_variants(
+        &model.id,
+        &model.display_name,
+        &tooltip,
+        &contexts,
+        false,
+        false,
+    );
     let legacy_slugs = variants
         .iter()
         .filter_map(|variant| variant.legacy_slug.clone())
@@ -707,7 +735,7 @@ fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
         supports_agent: Some(true),
         degradation_status: Some(0),
         tooltip_data: Some(tooltip.clone()),
-        supports_thinking: Some(true),
+        supports_thinking: Some(false),
         supports_images: Some(model.images),
         supports_max_mode: Some(false),
         client_display_name: Some(model.display_name.clone()),
@@ -719,7 +747,7 @@ fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
         inputbox_short_model_name: Some(model.display_name.clone()),
         supports_sandboxing: Some(true),
         supports_cmd_k: Some(false),
-        parameter_definitions: model_parameters(&contexts, true),
+        parameter_definitions: model_parameters(&contexts, false, false),
         variants,
         legacy_slugs,
         named_model_section_index: Some(1),
@@ -749,7 +777,7 @@ fn usable_plugin_model(model: &PluginModelDescriptor) -> agent::ModelDetails {
         display_model_id: model.id.clone(),
         display_name: model.display_name.clone(),
         display_name_short: model.display_name.clone(),
-        thinking_details: Some(agent::ThinkingDetails::default()),
+        thinking_details: None,
         credentials: Some(cli_local_model_credentials()),
         ..Default::default()
     }
@@ -761,7 +789,9 @@ fn usable_model(model: &ModelConfig) -> agent::ModelDetails {
         display_model_id: model.model_hash.clone(),
         display_name: model.display_name.clone(),
         display_name_short: model.display_name.clone(),
-        thinking_details: Some(agent::ThinkingDetails::default()),
+        thinking_details: model
+            .supports_thinking
+            .then(agent::ThinkingDetails::default),
         credentials: Some(cli_local_model_credentials()),
         ..Default::default()
     }
@@ -775,6 +805,7 @@ mod tests {
     fn model() -> ModelConfig {
         ModelConfig {
             model_hash: "local-model-hash".into(),
+            config_hash: "config-hash".into(),
             sort_order: 0,
             display_name: "Local Model".into(),
             group_name: None,
@@ -784,6 +815,9 @@ mod tests {
             api_key: "provider-secret".into(),
             tooltip_data: "Local Model".into(),
             model_id: "upstream-model".into(),
+            supports_thinking: false,
+            supports_images: false,
+            supports_fast: false,
             reasoning_effort: None,
             openai_endpoint: OPENAI_CHAT_ENDPOINT.into(),
             openai_extra_params_enabled: false,
@@ -815,6 +849,50 @@ mod tests {
         assert_eq!(credentials.api_key, CLI_LOCAL_MODEL_API_KEY);
         assert_eq!(credentials.base_url, None);
         assert_ne!(credentials.api_key, "provider-secret");
+    }
+
+    #[test]
+    fn builtin_catalog_only_advertises_explicit_capabilities() {
+        let unavailable = model();
+        let catalog = available_model(&unavailable);
+        assert_eq!(catalog.supports_thinking, Some(false));
+        assert_eq!(catalog.supports_images, Some(false));
+        assert_eq!(catalog.supports_max_mode, Some(false));
+        assert_eq!(
+            catalog
+                .parameter_definitions
+                .iter()
+                .map(|parameter| parameter.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["context"]
+        );
+        assert!(catalog.variants.iter().all(|variant| variant
+            .parameter_values
+            .iter()
+            .all(|parameter| parameter.id != "reasoning" && parameter.id != "fast")));
+        assert!(usable_model(&unavailable).thinking_details.is_none());
+
+        let mut enabled = model();
+        enabled.supports_thinking = true;
+        enabled.supports_images = true;
+        enabled.supports_fast = true;
+        let catalog = available_model(&enabled);
+        assert_eq!(catalog.supports_thinking, Some(true));
+        assert_eq!(catalog.supports_images, Some(true));
+        assert_eq!(catalog.supports_max_mode, Some(true));
+        assert!(catalog
+            .parameter_definitions
+            .iter()
+            .any(|parameter| parameter.id == "reasoning"));
+        assert!(catalog
+            .parameter_definitions
+            .iter()
+            .any(|parameter| parameter.id == "fast"));
+        assert!(catalog.variants.iter().any(|variant| variant
+            .parameter_values
+            .iter()
+            .any(|parameter| parameter.id == "fast" && parameter.value == "true")));
+        assert!(usable_model(&enabled).thinking_details.is_some());
     }
 
     #[test]

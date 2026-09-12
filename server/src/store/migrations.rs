@@ -456,10 +456,112 @@ mod tests {
             .unwrap();
 
             assert_eq!(checksum_after, checksum_before);
-            assert_eq!(versions, vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
+            assert_eq!(versions, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
             assert_eq!(checkpoint_table_exists, 1);
             assert_eq!(argument_error_column_exists, 1);
         }
+    }
+
+    #[tokio::test]
+    async fn stable_model_id_migration_preserves_local_references() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        let first_nine = Migrator {
+            migrations: Cow::Owned(ALL_MIGRATIONS.iter().take(9).cloned().collect()),
+            ..Migrator::DEFAULT
+        };
+        first_nine.run(&pool).await.unwrap();
+        sqlx::query(
+            r#"INSERT INTO model_configs(
+                model_hash, display_name, model_type, base_url, api_key, tooltip_data,
+                model_id, reasoning_effort, created_at_ms, updated_at_ms
+            ) VALUES ('old-config-hash', 'Legacy Model', 'openai', 'https://example.com',
+                'secret', 'Legacy Model', 'upstream-model', 'high', 1, 2)"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        for (call_id, model_hash) in [
+            ("builtin-call", "old-config-hash"),
+            ("plugin-call", "plugin:test/provider/model"),
+        ] {
+            sqlx::query(
+                r#"INSERT INTO llm_calls(
+                    call_id, run_id, conversation_id, provider_call_index, model_hash,
+                    provider_type, provider_url, request_type, request_url, model_id,
+                    display_name, status, created_at_ms, message_count, tool_count, detailed
+                ) VALUES (?, 'run', 'conversation', 0, ?, 'openai-chat',
+                    'https://example.com', 'openai-chat', 'https://example.com/v1/chat/completions',
+                    'upstream-model', 'Legacy Model', 'completed', 1, 1, 0, 0)"#,
+            )
+            .bind(call_id)
+            .bind(model_hash)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        sqlx::query(
+            r#"INSERT INTO service_settings(setting_key, value_json, updated_at_ms)
+               VALUES ('commit_settings', '{"model_id":"old-config-hash","prompt":"keep","prompt_locale":"zh-CN"}', 1)"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        run(&pool, Path::new("stable-model-id.db")).await.unwrap();
+
+        let model = sqlx::query(
+            "SELECT model_hash, config_hash, supports_thinking, supports_images, supports_fast FROM model_configs",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            model.try_get::<String, _>("model_hash").unwrap(),
+            "byok:old-config-hash"
+        );
+        assert_eq!(
+            model.try_get::<String, _>("config_hash").unwrap(),
+            "old-config-hash"
+        );
+        assert_eq!(model.try_get::<i64, _>("supports_thinking").unwrap(), 1);
+        assert_eq!(model.try_get::<i64, _>("supports_images").unwrap(), 0);
+        assert_eq!(model.try_get::<i64, _>("supports_fast").unwrap(), 0);
+
+        let builtin_call: String =
+            sqlx::query_scalar("SELECT model_hash FROM llm_calls WHERE call_id = 'builtin-call'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        let plugin_call: String =
+            sqlx::query_scalar("SELECT model_hash FROM llm_calls WHERE call_id = 'plugin-call'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        let commit_model: String = sqlx::query_scalar(
+            "SELECT json_extract(value_json, '$.model_id') FROM service_settings WHERE setting_key = 'commit_settings'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let sort_index_exists: i64 = sqlx::query_scalar(
+            "SELECT EXISTS(
+                SELECT 1 FROM sqlite_schema
+                WHERE type = 'index'
+                  AND name = 'model_configs_sort'
+                  AND tbl_name = 'model_configs'
+            )",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(builtin_call, "byok:old-config-hash");
+        assert_eq!(plugin_call, "plugin:test/provider/model");
+        assert_eq!(commit_model, "byok:old-config-hash");
+        assert_eq!(sort_index_exists, 1);
     }
 
     #[test]

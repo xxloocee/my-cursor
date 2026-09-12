@@ -66,6 +66,16 @@ export function CursorSettingsPage() {
     if (caCommand) void api.copyCursorText(caCommand);
   }, [caCommand]);
 
+  const copyCaCommand = async () => {
+    if (!caCommand) return;
+    try {
+      await api.copyCursorText(caCommand);
+      message(t("复制成功"));
+    } catch (cause) {
+      message(errorText(cause));
+    }
+  };
+
   const initializeCa = async () => {
     const status = await appStore.initializeCursorCa();
     if (status?.ca === "untrusted" && status.ca_install_command) setCaCommand(status.ca_install_command);
@@ -232,6 +242,7 @@ export function CursorSettingsPage() {
     const api_key = groupApiKeyDraft.trim();
     setGroupSettingsBusy(true);
     try {
+      const updates: Array<{ model_hash: string; model: ModelInput }> = [];
       for (const model of settingsGroup.models) {
         const input: ModelInput = {
           ...modelInput(model),
@@ -242,8 +253,9 @@ export function CursorSettingsPage() {
         if (input.group_name === (model.group_name ?? null)
           && input.base_url === model.base_url
           && input.api_key === model.api_key) continue;
-        await api.updateModel(model.model_hash, input);
+        updates.push({ model_hash: model.model_hash, model: input });
       }
+      if (updates.length > 0) await api.updateModels(updates);
       await appStore.refresh();
       setSettingsGroup(null);
     } catch (cause) {
@@ -280,7 +292,7 @@ export function CursorSettingsPage() {
     if (appStore.getSnapshot().cursorHarness?.ca !== "ready") setWaitingForCaRefresh(false);
   };
   const openCaTerminal = () => {
-    if (caCommand) void api.openCursorCaInstallTerminal(caCommand).catch((cause) => message(errorText(cause)));
+    if (caCommand) void api.openCursorCaInstallTerminal().catch((cause) => message(errorText(cause)));
     setCaCommand(null);
     setWaitingForCaRefresh(true);
   };
@@ -343,8 +355,20 @@ export function CursorSettingsPage() {
         <CursorModelEditor draft={draft} modelOptions={modelOptions} discovering={discovering} onChange={setDraft} onDiscover={discover} />
       </>}
     </Modal>
-    <ConfirmDialog open={caCommand !== null} title={t("安装本地 CA")} cancelLabel={t("关闭")} confirmLabel={t("打开终端")} onCancel={() => setCaCommand(null)} onConfirm={openCaTerminal}>
-      <div className={styles.editor}><strong>{t("需要授权安装证书")}</strong><span>{t("安装命令已自动复制。点击“打开终端”，将命令粘贴到终端中执行，并按提示输入密码。")}</span><pre className={styles.command}>{caCommand}</pre></div>
+    <ConfirmDialog
+      open={caCommand !== null}
+      title={t("安装本地 CA")}
+      leadingAction={<button type="button" className={controls.primary} onClick={() => void copyCaCommand()}>{t("复制")}</button>}
+      cancelLabel={t("关闭")}
+      confirmLabel={t("打开终端")}
+      onCancel={() => setCaCommand(null)}
+      onConfirm={openCaTerminal}
+    >
+      <div className={styles.editor}>
+        <strong>{t("需要授权安装证书")}</strong>
+        <span>{t("以管理员身份，打开终端，右键将命令粘贴到终端中执行，并按提示输入密码。")}</span>
+        <pre className={styles.command}>{caCommand}</pre>
+      </div>
     </ConfirmDialog>
     <Modal open={settingsGroup !== null} title={t("分组设置")} busy={groupSettingsBusy || cursorBusy} onClose={() => setSettingsGroup(null)} onSubmit={() => void saveGroupSettings()} submitLabel={t("保存")}>
       {settingsGroup && <div className={styles.editor}>

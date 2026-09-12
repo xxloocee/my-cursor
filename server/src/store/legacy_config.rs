@@ -5,8 +5,8 @@ use serde::Deserialize;
 
 use crate::{
     model::{
-        model_hash, normalize_model_input, normalize_request_url, ModelConfigInput, ModelType,
-        OPENAI_CHAT_ENDPOINT, OPENAI_RESPONSES_ENDPOINT,
+        model_config_hash, normalize_model_input, normalize_request_url, ModelConfigInput,
+        ModelType, OPENAI_CHAT_ENDPOINT, OPENAI_RESPONSES_ENDPOINT,
     },
     Error, Result,
 };
@@ -86,13 +86,13 @@ impl Store {
             .models()
             .await?
             .into_iter()
-            .map(|model| model.model_hash)
+            .map(|model| model.config_hash)
             .collect::<HashSet<_>>();
         let mut seen = HashSet::with_capacity(inputs.len());
         let mut models = Vec::with_capacity(inputs.len());
         for input in inputs {
             let input = normalize_model_input(&input)?;
-            let hash = model_hash(&input)?;
+            let hash = model_config_hash(&input)?;
             if seen.insert(hash.clone()) {
                 models.push(LegacyModelImportEntry {
                     existing: existing.contains(&hash),
@@ -155,6 +155,9 @@ fn model_input(model: LegacyModel) -> Result<ModelConfigInput> {
     };
     let (base_url, openai_endpoint, use_full_url) =
         legacy_request_configuration(model_type, &model.base_url, &model.openai_endpoint)?;
+    let supports_thinking = !model.reasoning_effort.trim().is_empty()
+        || !model.anthropic_thinking_effort.trim().is_empty()
+        || model.thinking_budget_tokens > 0;
     Ok(ModelConfigInput {
         sort_order: model.sort,
         display_name: model.display_name.clone(),
@@ -169,6 +172,9 @@ fn model_input(model: LegacyModel) -> Result<ModelConfigInput> {
             model.tooltip_data
         },
         model_id: model.model_id,
+        supports_thinking,
+        supports_images: false,
+        supports_fast: false,
         reasoning_effort: optional_string(model.reasoning_effort),
         openai_endpoint,
         openai_extra_params_enabled: model.openai_extra_params_enabled,

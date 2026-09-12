@@ -19,6 +19,7 @@ type ModalProps = {
   initialFocus?: "first" | "submit";
   onClose: () => void;
   onSubmit?: () => void;
+  leadingAction?: ReactNode;
   secondaryAction?: ReactNode;
   closeLabel?: string;
   submitLabel?: string;
@@ -39,7 +40,7 @@ function focusableElements(root: HTMLElement) {
     .filter((element) => element.getClientRects().length > 0);
 }
 
-export function Modal({ id, open, title, children, banner, busy, wide, compact, fullHeight, role = "dialog", ariaDescribedBy, initialFocus = "first", onClose, onSubmit, secondaryAction, closeLabel = t("取消"), submitLabel = t("保存"), submitDisabled = false }: ModalProps) {
+export function Modal({ id, open, title, children, banner, busy, wide, compact, fullHeight, role = "dialog", ariaDescribedBy, initialFocus = "first", onClose, onSubmit, leadingAction, secondaryAction, closeLabel = t("取消"), submitLabel = t("保存"), submitDisabled = false }: ModalProps) {
   const dialog = useRef<HTMLDivElement>(null);
   const submitButton = useRef<HTMLButtonElement>(null);
   const closeRef = useRef(onClose);
@@ -95,6 +96,7 @@ export function Modal({ id, open, title, children, banner, busy, wide, compact, 
       {banner && <div className={styles.banner}>{banner}</div>}
       <ScrollableContent alwaysShowVertical className={styles.body} contentClassName={styles.bodyContent}>{children}</ScrollableContent>
       <footer>
+        {leadingAction}
         <button type="button" className={controls.primary} disabled={busy} onClick={onClose}>{closeLabel}</button>
         {secondaryAction}
         {onSubmit && <button ref={submitButton} type="button" className={controls.primary} disabled={busy || submitDisabled} onClick={onSubmit}>{busy ? t("处理中…") : submitLabel}</button>}

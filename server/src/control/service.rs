@@ -17,8 +17,8 @@ use crate::{
     model::{
         ContentPart, CursorRunTraceArtifact, CursorRunTraceSummary, LlmCallRequest,
         LlmCallResponseChunk, LlmCallSummary, ModelConfig, ModelConfigInput, ModelInvocation,
-        ModelRequest, ModelSpec, ModelType, Overview, ProjectedContent, ProjectedMessage,
-        PromptSpec, ProviderType, Role,
+        ModelRequest, ModelSpec, ModelType, ModelUpdate, Overview, ProjectedContent,
+        ProjectedMessage, PromptSpec, ProviderType, Role,
     },
     plugin::{PluginDescriptor, PluginRegistry, PluginRuntime, PluginRuntimeStatus},
     provider::{is_valid_response_event, ModelEvent, Provider},
@@ -308,6 +308,10 @@ impl ControlService {
         input: &ModelConfigInput,
     ) -> Result<ModelConfig> {
         self.store.update_model(model_hash, input).await
+    }
+
+    pub async fn update_models(&self, updates: &[ModelUpdate]) -> Result<Vec<ModelConfig>> {
+        self.store.update_models(updates).await
     }
 
     pub async fn test_model(

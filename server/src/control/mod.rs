@@ -10,15 +10,13 @@ mod settings;
 use axum::{
     body::{to_bytes, Body},
     extract::State,
-    http::{header, header::CONTENT_TYPE, HeaderValue, Method, Request, Response, StatusCode},
+    http::{header, Request, Response, StatusCode},
+    middleware::{self, Next},
     routing::{any, get, post, put},
     Router,
 };
-use tower_http::{
-    cors::{AllowOrigin, CorsLayer},
-    services::ServeDir,
-};
-use url::{Host, Url};
+use tower_http::services::ServeDir;
+use url::Url;
 
 pub use service::{
     CallDetail, CallSummary, ControlService, DiscoveredModels, LegacyModelImportPreview,
@@ -109,10 +107,13 @@ fn proxy_error(error: impl std::fmt::Display) -> Response<Body> {
 }
 
 pub fn api_router(service: ControlService) -> Router {
-    Router::new()
+    local_control_router(
+        Router::new()
         .route(
             "/__byok-api__/api/models",
-            get(models::list).post(models::create),
+            get(models::list)
+                .post(models::create)
+                .put(models::update_many),
         )
         .route("/__byok-api__/api/models/discover", post(models::discover))
         .route(
@@ -218,46 +219,101 @@ pub fn api_router(service: ControlService) -> Router {
             "/__byok-api__/api/harness/cursor/enabled",
             put(harness::set_enabled),
         )
-        .with_state(service)
-        .layer(desktop_cors())
+        .with_state(service),
+    )
 }
 
-fn desktop_cors() -> CorsLayer {
-    CorsLayer::new()
-        .allow_origin(AllowOrigin::predicate(|origin, _| local_origin(origin)))
-        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-        .allow_headers([CONTENT_TYPE, header::ACCEPT_LANGUAGE])
+/// Applies the localhost-only boundary shared by every management API router.
+pub fn local_control_router(router: Router) -> Router {
+    router.layer(middleware::from_fn(require_local_control_host))
 }
 
-fn local_origin(origin: &HeaderValue) -> bool {
-    let Ok(origin) = origin.to_str() else {
+async fn require_local_control_host(request: Request<Body>, next: Next) -> Response<Body> {
+    let authority = match request.headers().get(header::HOST) {
+        Some(host) => host.to_str().ok(),
+        None => request
+            .uri()
+            .authority()
+            .map(|authority| authority.as_str()),
+    };
+    if authority.is_some_and(is_local_control_authority) {
+        return next.run(request).await;
+    }
+
+    Response::builder()
+        .status(StatusCode::FORBIDDEN)
+        .body(Body::from("control API is only available on localhost"))
+        .expect("static forbidden response")
+}
+
+fn is_local_control_authority(value: &str) -> bool {
+    let Ok(authority) = value.parse::<axum::http::uri::Authority>() else {
         return false;
     };
-    if origin.eq_ignore_ascii_case("tauri://localhost") {
-        return true;
-    }
-    let Ok(origin) = Url::parse(origin) else {
-        return false;
+    let host = authority.host().trim_end_matches('.');
+    host.eq_ignore_ascii_case("localhost") || matches!(host, "127.0.0.1" | "[::1]" | "::1")
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::{
+        body::Body,
+        http::{header, Request, StatusCode},
+        routing::get,
+        Router,
     };
-    if !matches!(origin.scheme(), "http" | "https")
-        || !origin.username().is_empty()
-        || origin.password().is_some()
-        || origin.path() != "/"
-        || origin.query().is_some()
-        || origin.fragment().is_some()
-    {
-        return false;
+    use tower::ServiceExt;
+
+    use super::{is_local_control_authority, local_control_router};
+
+    #[test]
+    fn control_api_accepts_only_loopback_authorities() {
+        for authority in [
+            "localhost",
+            "LOCALHOST:3000",
+            "localhost.:3000",
+            "127.0.0.1",
+            "127.0.0.1:3000",
+            "[::1]",
+            "[::1]:3000",
+        ] {
+            assert!(is_local_control_authority(authority), "{authority}");
+        }
+
+        for authority in [
+            "localhost.evil",
+            "127.0.0.2:3000",
+            "192.168.1.10:3000",
+            "example.com:3000",
+            "",
+            "not a host",
+        ] {
+            assert!(!is_local_control_authority(authority), "{authority}");
+        }
     }
-    match origin.host() {
-        Some(Host::Domain(host)) => {
-            host.eq_ignore_ascii_case("localhost") || host.eq_ignore_ascii_case("tauri.localhost")
+
+    #[tokio::test]
+    async fn control_api_host_guard_rejects_non_loopback_requests() {
+        let router = local_control_router(
+            Router::new().route("/", get(|| async { StatusCode::NO_CONTENT })),
+        );
+
+        for (host, expected) in [
+            (Some("127.0.0.1:3000"), StatusCode::NO_CONTENT),
+            (Some("localhost.evil:3000"), StatusCode::FORBIDDEN),
+            (Some("192.168.1.10:3000"), StatusCode::FORBIDDEN),
+            (None, StatusCode::FORBIDDEN),
+        ] {
+            let mut request = Request::builder().uri("/");
+            if let Some(host) = host {
+                request = request.header(header::HOST, host);
+            }
+            let response = router
+                .clone()
+                .oneshot(request.body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), expected, "host: {host:?}");
         }
-        Some(Host::Ipv4(address)) => {
-            address.is_loopback() || address.is_private() || address.is_link_local()
-        }
-        Some(Host::Ipv6(address)) => {
-            address.is_loopback() || address.is_unique_local() || address.is_unicast_link_local()
-        }
-        None => false,
     }
 }

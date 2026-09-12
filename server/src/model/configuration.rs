@@ -9,6 +9,7 @@ use crate::{Error, Result};
 
 pub const OPENAI_RESPONSES_ENDPOINT: &str = "/v1/responses";
 pub const OPENAI_CHAT_ENDPOINT: &str = "/v1/chat/completions";
+pub const BUILTIN_MODEL_ID_PREFIX: &str = "byok:";
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum ProviderType {
@@ -99,6 +100,12 @@ pub struct ModelConfigInput {
     pub tooltip_data: String,
     pub model_id: String,
     #[serde(default)]
+    pub supports_thinking: bool,
+    #[serde(default)]
+    pub supports_images: bool,
+    #[serde(default)]
+    pub supports_fast: bool,
+    #[serde(default)]
     pub reasoning_effort: Option<String>,
     #[serde(default)]
     pub openai_endpoint: String,
@@ -122,9 +129,17 @@ pub struct ModelConfigInput {
     pub thinking_budget_tokens: Option<u64>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct ModelUpdate {
+    pub model_hash: String,
+    pub model: ModelConfigInput,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct ModelConfig {
     pub model_hash: String,
+    #[serde(skip)]
+    pub config_hash: String,
     pub sort_order: i64,
     pub display_name: String,
     pub group_name: Option<String>,
@@ -135,6 +150,9 @@ pub struct ModelConfig {
     pub api_key: String,
     pub tooltip_data: String,
     pub model_id: String,
+    pub supports_thinking: bool,
+    pub supports_images: bool,
+    pub supports_fast: bool,
     pub reasoning_effort: Option<String>,
     pub openai_endpoint: String,
     pub openai_extra_params_enabled: bool,
@@ -196,13 +214,20 @@ impl ModelConfig {
         if model.context_window_tokens.is_none() {
             model.context_window_tokens = self.context_window_tokens;
         }
-        if model.reasoning.effort.is_none() {
-            model.reasoning.effort = match self.model_type {
-                ModelType::OpenAi => self.reasoning_effort.clone(),
-                ModelType::Anthropic => self.anthropic_thinking_effort.clone(),
-            };
+        if self.supports_thinking {
+            if model.reasoning.effort.is_none() {
+                model.reasoning.effort = match self.model_type {
+                    ModelType::OpenAi => self.reasoning_effort.clone(),
+                    ModelType::Anthropic => self.anthropic_thinking_effort.clone(),
+                };
+            }
+            model.reasoning.enabled |= model.reasoning.effort.is_some();
+        } else {
+            model.reasoning = super::ReasoningSpec::default();
         }
-        model.reasoning.enabled |= model.reasoning.effort.is_some();
+        if !self.supports_fast {
+            model.latency = super::ModelLatency::Standard;
+        }
     }
 }
 
@@ -218,16 +243,19 @@ pub fn normalize_model_input(input: &ModelConfigInput) -> Result<ModelConfigInpu
     let api_key = required(&input.api_key, "model API key")?;
     let tooltip_data = required(&input.tooltip_data, "model tooltip")?;
     let model_id = required(&input.model_id, "model id")?;
-    let reasoning_effort = normalize_effort(input.reasoning_effort.as_deref(), true)?;
-    let anthropic_thinking_effort = match input.model_type {
-        ModelType::Anthropic => Some(
+    let reasoning_effort = match (input.supports_thinking, input.model_type) {
+        (true, ModelType::OpenAi) => normalize_effort(input.reasoning_effort.as_deref(), true)?,
+        _ => None,
+    };
+    let anthropic_thinking_effort = match (input.supports_thinking, input.model_type) {
+        (true, ModelType::Anthropic) => Some(
             normalize_effort(
                 input.anthropic_thinking_effort.as_deref().or(Some("xhigh")),
                 false,
             )?
             .expect("Anthropic effort has a default"),
         ),
-        ModelType::OpenAi => None,
+        _ => None,
     };
     let openai_endpoint = match input.model_type {
         ModelType::OpenAi => normalize_openai_endpoint(&input.openai_endpoint)?,
@@ -247,9 +275,10 @@ pub fn normalize_model_input(input: &ModelConfigInput) -> Result<ModelConfigInpu
         api_key,
         tooltip_data,
         model_id,
-        reasoning_effort: (input.model_type == ModelType::OpenAi)
-            .then_some(reasoning_effort)
-            .flatten(),
+        supports_thinking: input.supports_thinking,
+        supports_images: input.supports_images,
+        supports_fast: input.model_type == ModelType::OpenAi && input.supports_fast,
+        reasoning_effort,
         openai_endpoint,
         openai_extra_params_enabled: input.model_type == ModelType::OpenAi
             && input.openai_extra_params_enabled,
@@ -271,7 +300,11 @@ pub fn normalize_model_input(input: &ModelConfigInput) -> Result<ModelConfigInpu
         max_completion_tokens: positive(input.max_completion_tokens, "max completion tokens")?,
         anthropic_max_tokens: positive(input.anthropic_max_tokens, "Anthropic max tokens")?,
         anthropic_thinking_effort,
-        thinking_budget_tokens: positive(input.thinking_budget_tokens, "thinking budget")?,
+        thinking_budget_tokens: if input.supports_thinking {
+            positive(input.thinking_budget_tokens, "thinking budget")?
+        } else {
+            None
+        },
     };
     resolve_request_url(
         normalized.model_type,
@@ -282,7 +315,7 @@ pub fn normalize_model_input(input: &ModelConfigInput) -> Result<ModelConfigInpu
     Ok(normalized)
 }
 
-pub fn model_hash(input: &ModelConfigInput) -> Result<String> {
+pub fn model_config_hash(input: &ModelConfigInput) -> Result<String> {
     let normalized = normalize_model_input(input)?;
     let request_url = resolve_request_url(
         normalized.model_type,

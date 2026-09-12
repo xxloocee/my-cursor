@@ -230,7 +230,7 @@ fn apply_model(
         object.insert("reasoning_effort".into(), json!(effort));
     }
     if model.latency == ModelLatency::Fast {
-        object.insert("service_tier".into(), json!("fast"));
+        object.insert("service_tier".into(), json!("priority"));
     }
     Ok(())
 }
@@ -439,6 +439,17 @@ pub(crate) fn openai_usage(value: &Value) -> Usage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fast_latency_uses_openai_priority_service_tier() {
+        let mut body = json!({});
+        let mut model = crate::model::ModelSpec::new("test-model");
+        model.latency = ModelLatency::Fast;
+
+        apply_model(&mut body, &model, None).unwrap();
+
+        assert_eq!(body["service_tier"], "priority");
+    }
 
     #[test]
     fn observed_tool_calls_outrank_ordinary_stop_reasons() {

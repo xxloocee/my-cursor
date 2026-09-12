@@ -25,7 +25,7 @@ type MenuItem =
 
 const keptAlivePages = ["/", "/calls", "/settings", "/harness/cursor", "/plugins"];
 const tutorialReadStorageKey = "cursor-byok:tutorial-read";
-const tutorialUrl = "https://github.com/xxloocee/my-cursor#readme";
+const tutorialUrl = "https://doc.ergouzi.life/apps/my-cursor";
 
 export function AppLayout() {
   const { busy, cursorHarness } = useAppStore();

@@ -7,6 +7,9 @@ use std::{
     time::Duration,
 };
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 use axum::{
     extract::{Extension, Json},
     http::StatusCode,
@@ -20,9 +23,12 @@ use tauri::{
 use tauri_plugin_opener::OpenerExt;
 use tokio_util::sync::CancellationToken;
 
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+
 #[cfg(dev)]
 use cursor_server::config::ConsoleSource;
-use cursor_server::{App, Config, Result};
+use cursor_server::{control::local_control_router, App, Config, Result};
 
 #[cfg(not(dev))]
 use crate::frontend;
@@ -39,36 +45,39 @@ struct DesktopRuntime {
 }
 
 #[tauri::command]
-fn open_terminal_with_command(command: String) -> tauri::Result<()> {
+fn open_ca_install_terminal() -> tauri::Result<()> {
     #[cfg(target_os = "macos")]
     {
-        let _ = command;
         Command::new("open").args(["-a", "Terminal"]).status()?;
         Ok(())
     }
     #[cfg(target_os = "windows")]
     {
-        Command::new("cmd")
-            .args(["/C", "start", "cmd", "/K", &command])
+        Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                "Start-Process -FilePath 'powershell.exe' -Verb RunAs",
+            ])
+            .creation_flags(CREATE_NO_WINDOW)
             .spawn()?;
         Ok(())
     }
     #[cfg(target_os = "linux")]
     {
-        const TERMINALS: &[(&str, &[&str])] = &[
-            ("x-terminal-emulator", &["-e"]),
-            ("gnome-terminal", &["--"]),
-            ("konsole", &["-e"]),
-            ("xfce4-terminal", &["--execute"]),
-            ("alacritty", &["-e"]),
-            ("kitty", &[]),
+        const TERMINALS: &[&str] = &[
+            "x-terminal-emulator",
+            "gnome-terminal",
+            "konsole",
+            "xfce4-terminal",
+            "alacritty",
+            "kitty",
         ];
-        let script = format!("{command}; exec bash");
-        for (terminal, separator) in TERMINALS {
-            let mut process = Command::new(terminal);
-            process.args(*separator);
-            process.arg("bash").arg("-c").arg(&script);
-            match process.spawn() {
+        for terminal in TERMINALS {
+            match Command::new(terminal).spawn() {
                 Ok(_) => return Ok(()),
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(error) => return Err(error.into()),
@@ -107,12 +116,14 @@ async fn open_external_url_handler(
 }
 
 fn desktop_api_router(app: AppHandle) -> Router {
-    Router::new()
-        .route(
-            "/__byok-api__/api/desktop/open-external-url",
-            post(open_external_url_handler),
-        )
-        .layer(Extension(app))
+    local_control_router(
+        Router::new()
+            .route(
+                "/__byok-api__/api/desktop/open-external-url",
+                post(open_external_url_handler),
+            )
+            .layer(Extension(app)),
+    )
 }
 
 fn create_main_window(
@@ -178,7 +189,7 @@ pub fn run() -> ExitCode {
 
     let app = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
-            open_terminal_with_command,
+            open_ca_install_terminal,
             crate::update::check_portable_update,
             crate::update::install_portable_update,
         ])

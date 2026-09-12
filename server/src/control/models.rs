@@ -7,7 +7,7 @@ use axum::{
 use serde::Deserialize;
 
 use crate::{
-    model::{ModelConfig, ModelConfigInput},
+    model::{ModelConfig, ModelConfigInput, ModelUpdate},
     Result,
 };
 
@@ -19,6 +19,11 @@ use super::{
 #[derive(Deserialize)]
 pub struct SaveModels {
     pub models: Vec<ModelConfigInput>,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateModels {
+    pub models: Vec<ModelUpdate>,
 }
 
 #[derive(Deserialize)]
@@ -38,6 +43,13 @@ pub async fn create(
         StatusCode::CREATED,
         Json(service.create_models(&input.models).await?),
     ))
+}
+
+pub async fn update_many(
+    State(service): State<ControlService>,
+    Json(input): Json<UpdateModels>,
+) -> Result<Json<Vec<ModelConfig>>> {
+    Ok(Json(service.update_models(&input.models).await?))
 }
 
 pub async fn reorder(

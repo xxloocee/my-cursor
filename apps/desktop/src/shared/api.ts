@@ -13,6 +13,9 @@ export interface Model {
   api_key: string;
   tooltip_data: string;
   model_id: string;
+  supports_thinking: boolean;
+  supports_images: boolean;
+  supports_fast: boolean;
   reasoning_effort: string | null;
   openai_endpoint: string;
   openai_extra_params_enabled: boolean;
@@ -40,6 +43,9 @@ export interface ModelInput {
   api_key: string;
   tooltip_data: string;
   model_id: string;
+  supports_thinking: boolean;
+  supports_images: boolean;
+  supports_fast: boolean;
   reasoning_effort: string | null;
   openai_endpoint: string;
   openai_extra_params_enabled: boolean;
@@ -466,6 +472,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   models: () => request<Model[]>("/models"),
   createModels: (models: ModelInput[]) => request<Model[]>("/models", { method: "POST", body: JSON.stringify({ models }) }),
+  updateModels: (models: Array<{ model_hash: string; model: ModelInput }>) => request<Model[]>("/models", { method: "PUT", body: JSON.stringify({ models }) }),
   reorderModels: (modelHashes: string[]) => request<Model[]>("/models/order", { method: "PUT", body: JSON.stringify({ model_hashes: modelHashes }) }),
   discoverModels: (input: ModelDiscoveryInput) => request<{ models: string[] }>("/models/discover", { method: "POST", body: JSON.stringify(input) }),
   previewV0049Models: () => request<LegacyModelImportPreview>("/models/import-v0049"),
@@ -501,10 +508,10 @@ export const api = {
   pluginRuntime: () => request<PluginRuntimeStatus>("/plugins/runtime"),
   initializePluginRuntime: () => request<PluginRuntimeStatus>("/plugins/runtime", { method: "POST" }),
   cancelPluginRuntimeInitialization: () => request<PluginRuntimeStatus>("/plugins/runtime", { method: "DELETE" }),
-  openCursorCaInstallTerminal: async (command: string) => {
+  openCursorCaInstallTerminal: async () => {
     if (!packagedDesktop) throw new Error(t("请在桌面应用中打开终端安装 CA"));
     const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("open_terminal_with_command", { command });
+    await invoke("open_ca_install_terminal");
   },
   copyCursorText: async (text: string) => {
     if (!packagedDesktop) throw new Error(t("请在桌面应用中复制到系统剪贴板"));

@@ -1,6 +1,6 @@
 fn main() {
     let manifest = tauri_build::AppManifest::new().commands(&[
-        "open_terminal_with_command",
+        "open_ca_install_terminal",
         "check_portable_update",
         "install_portable_update",
     ]);

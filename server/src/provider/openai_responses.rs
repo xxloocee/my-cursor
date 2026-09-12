@@ -378,7 +378,7 @@ fn apply_model(
         object.insert("reasoning".into(), Value::Object(reasoning));
     }
     if model.latency == ModelLatency::Fast {
-        object.insert("service_tier".into(), json!("fast"));
+        object.insert("service_tier".into(), json!("priority"));
     }
     Ok(())
 }
@@ -543,6 +543,17 @@ fn responses_usage(value: &Value) -> Usage {
 mod tests {
     use super::*;
     use crate::model::ProviderReplayState;
+
+    #[test]
+    fn fast_latency_uses_openai_priority_service_tier() {
+        let mut body = json!({});
+        let mut model = crate::model::ModelSpec::new("test-model");
+        model.latency = ModelLatency::Fast;
+
+        apply_model(&mut body, &model, None).unwrap();
+
+        assert_eq!(body["service_tier"], "priority");
+    }
 
     #[test]
     fn reasoning_replay_projects_response_items_to_valid_input_items() {

@@ -108,10 +108,14 @@ impl PromptAssets {
             Mode::Subagent,
             Mode::Compaction,
         ] {
-            let prompt = asset(&format!("{}/prompt.md", mode.name()))?
-                .ok_or_else(|| Error::Config(format!("missing prompt for {mode:?}")))?;
-            let runtime = asset(&format!("{}/runtime.md", mode.name()))?
-                .ok_or_else(|| Error::Config(format!("missing runtime template for {mode:?}")))?;
+            let prompt = normalize_line_endings(
+                asset(&format!("{}/prompt.md", mode.name()))?
+                    .ok_or_else(|| Error::Config(format!("missing prompt for {mode:?}")))?,
+            );
+            let runtime =
+                normalize_line_endings(asset(&format!("{}/runtime.md", mode.name()))?.ok_or_else(
+                    || Error::Config(format!("missing runtime template for {mode:?}")),
+                )?);
             validate_runtime_template(mode, &runtime)?;
             let manifest = asset(&format!("modes/{}.json", mode.name()))?
                 .ok_or_else(|| Error::Config(format!("missing manifest for {mode:?}")))?;
@@ -132,6 +136,10 @@ impl PromptAssets {
     pub fn mode(&self, mode: Mode) -> &ModeAssets {
         &self.modes[mode.index()]
     }
+}
+
+fn normalize_line_endings(value: String) -> String {
+    value.replace("\r\n", "\n").replace('\r', "\n")
 }
 
 const RUNTIME_VARIABLES: &[&str] = &[

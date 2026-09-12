@@ -238,10 +238,8 @@ async fn bidi_handler(
     let trace_metadata = decoded.trace_metadata();
     let trace = registry.trace(&decoded.request_id);
     let local = if let Some(model_id) = decoded.model_id() {
-        // 插件模型 ID 只在本地有意义,永远不转发到 Cursor 官方上游。
-        if model_id.starts_with(crate::plugin::ADAPTER_ID_PREFIX)
-            || registry.store().model(model_id).await?.is_some()
-        {
+        // 本地模型命名空间只在本地有意义；未知或已删除的 ID 也不能泄漏给官方上游。
+        if is_local_model_id(model_id) {
             tracing::info!(
                 request_id = decoded.request_id,
                 model_id,
@@ -344,6 +342,11 @@ async fn bidi_handler(
     Ok(response)
 }
 
+fn is_local_model_id(model_id: &str) -> bool {
+    model_id.starts_with(crate::model::BUILTIN_MODEL_ID_PREFIX)
+        || model_id.starts_with(crate::plugin::ADAPTER_ID_PREFIX)
+}
+
 fn trace_outcome(
     mut metadata: serde_json::Value,
     accepted: bool,
@@ -389,4 +392,16 @@ fn header_text<'a>(headers: &'a HeaderMap, name: &str) -> Result<Option<&'a str>
         .map(|value| value.to_str())
         .transpose()
         .map_err(|error| crate::Error::Protocol(format!("invalid {name} header: {error}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_local_model_id;
+
+    #[test]
+    fn stale_local_ids_never_route_to_cursor_upstream() {
+        assert!(is_local_model_id("byok:missing-model"));
+        assert!(is_local_model_id("plugin:missing/provider/model"));
+        assert!(!is_local_model_id("claude-4.5-sonnet"));
+    }
 }

@@ -17,7 +17,7 @@
     "core:window:allow-is-maximized",
     "core:window:allow-close",
     "core:app:allow-set-dock-visibility",
-    "allow-open-terminal-with-command",
+    "allow-open-ca-install-terminal",
     "allow-check-portable-update",
     "allow-install-portable-update",
     "clipboard-manager:allow-write-text",
