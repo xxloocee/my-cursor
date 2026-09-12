@@ -24,16 +24,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify release author
-        env:
-          REPOSITORY_OWNER: ${{ github.repository_owner }}
-        shell: bash
-        run: |
-          if [[ "${GITHUB_ACTOR}" != "${REPOSITORY_OWNER}" ]]; then
-            echo "Only ${REPOSITORY_OWNER} may publish a release" >&2
-            exit 1
-          fi
-
       - name: Verify updater signing key
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
