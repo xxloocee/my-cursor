@@ -68,9 +68,7 @@ impl Provider for ProviderRouter {
                     let guard = recorder.cancel_on_drop();
                     let mut routed = invocation.clone();
                     routed.request.model.display_name = Some(plan.model.display_name.clone());
-                    if let Some(tokens) = plan.model.max_output_tokens {
-                        routed.request.model.max_output_tokens.get_or_insert(tokens);
-                    }
+                    routed.request.model.limit_output_tokens(plan.model.max_output_tokens);
                     let provider: Arc<dyn Provider> = Arc::new(NormalizedProvider::new(Arc::new(PluginModelProvider {
                         registry: plugins.clone(),
                         recorder: recorder.clone(),

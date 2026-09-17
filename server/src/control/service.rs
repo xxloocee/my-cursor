@@ -361,7 +361,7 @@ impl ControlService {
         if model_hash.starts_with(crate::plugin::ADAPTER_ID_PREFIX) {
             let descriptor = self.plugins.model_descriptor(model_hash).await?;
             model.display_name = Some(descriptor.display_name);
-            model.max_output_tokens = Some(descriptor.max_output_tokens.unwrap_or(65_536));
+            apply_connectivity_budget(&mut model, descriptor.max_output_tokens);
         } else {
             let configured = self
                 .store
@@ -369,7 +369,7 @@ impl ControlService {
                 .await?
                 .ok_or_else(|| Error::RunNotFound(format!("model {model_hash}")))?;
             configured.configure(&mut model);
-            model.max_output_tokens = Some(configured.max_output_tokens().unwrap_or(65_536));
+            apply_connectivity_budget(&mut model, configured.max_output_tokens());
         }
         let call_id = format!("model-test-{}", uuid::Uuid::new_v4());
         let invocation = ModelInvocation {
@@ -1021,4 +1021,36 @@ fn apply_discovery_headers(
         request = request.header(name, value);
     }
     Ok(request)
+}
+
+/// Keep the probe small, while allowing a configured fixed thinking budget to run.
+fn apply_connectivity_budget(model: &mut ModelSpec, configured_limit: Option<u64>) {
+    model.max_output_tokens = Some(
+        model
+            .reasoning
+            .budget_tokens
+            .unwrap_or(0)
+            .saturating_add(4096),
+    );
+    model.limit_output_tokens(configured_limit);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn connectivity_budget_works_with_unset_limits_and_fixed_thinking() {
+        let mut model = ModelSpec::new("test");
+        apply_connectivity_budget(&mut model, None);
+        assert_eq!(model.max_output_tokens, Some(4096));
+        apply_connectivity_budget(&mut model, Some(2048));
+        assert_eq!(model.max_output_tokens, Some(2048));
+        model.reasoning.budget_tokens = Some(4096);
+        apply_connectivity_budget(&mut model, Some(8192));
+        assert_eq!(model.max_output_tokens, Some(8192));
+        apply_connectivity_budget(&mut model, Some(6000));
+        assert_eq!(model.max_output_tokens, Some(6000));
+        assert!(model.reasoning.budget_tokens.unwrap() < model.max_output_tokens.unwrap());
+    }
 }

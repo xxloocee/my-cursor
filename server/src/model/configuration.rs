@@ -209,6 +209,7 @@ impl ModelConfig {
 
     pub fn configure(&self, model: &mut super::ModelSpec) {
         model.display_name = Some(self.display_name.clone());
+        model.limit_output_tokens(self.max_output_tokens());
         // A request-selected context is authoritative.  Use the saved model
         // value only when Cursor did not send a context parameter.
         if model.context_window_tokens.is_none() {
@@ -221,7 +222,13 @@ impl ModelConfig {
                     ModelType::Anthropic => self.anthropic_thinking_effort.clone(),
                 };
             }
-            model.reasoning.enabled |= model.reasoning.effort.is_some();
+            model.reasoning.budget_tokens = if self.model_type == ModelType::Anthropic {
+                self.thinking_budget_tokens
+            } else {
+                None
+            };
+            model.reasoning.enabled |=
+                model.reasoning.effort.is_some() || model.reasoning.budget_tokens.is_some();
         } else {
             model.reasoning = super::ReasoningSpec::default();
         }
@@ -306,6 +313,20 @@ pub fn normalize_model_input(input: &ModelConfigInput) -> Result<ModelConfigInpu
             None
         },
     };
+    if normalized.model_type == ModelType::Anthropic {
+        if let Some(budget) = normalized.thinking_budget_tokens {
+            let limit = normalized
+                .anthropic_max_tokens
+                .or(normalized.max_completion_tokens)
+                .unwrap_or(65_000);
+            if budget < 1024 || budget >= limit {
+                return Err(Error::Config(
+                    "Anthropic thinking budget must be at least 1024 and below max output tokens"
+                        .into(),
+                ));
+            }
+        }
+    }
     resolve_request_url(
         normalized.model_type,
         &normalized.base_url,
@@ -472,6 +493,8 @@ fn empty_object_ref() -> &'static serde_json::Value {
 pub struct ReasoningSpec {
     pub enabled: bool,
     pub effort: Option<String>,
+    #[serde(default)]
+    pub budget_tokens: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -497,6 +520,14 @@ pub struct ModelSpec {
 }
 
 impl ModelSpec {
+    /// Task budgets and configured output limits are both upper bounds.
+    pub fn limit_output_tokens(&mut self, limit: Option<u64>) {
+        if let Some(limit) = limit {
+            self.max_output_tokens =
+                Some(self.max_output_tokens.map_or(limit, |task| task.min(limit)));
+        }
+    }
+
     pub fn new(model_id: impl Into<String>) -> Self {
         Self {
             model_id: model_id.into(),

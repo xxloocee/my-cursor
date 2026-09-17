@@ -557,6 +557,14 @@ fn prost_value(value: &prost_types::Value) -> Value {
     use prost_types::value::Kind;
     match value.kind.as_ref() {
         None | Some(Kind::NullValue(_)) => Value::Null,
+        // Protobuf Value stores every number as f64. Restore safe integers so
+        // JSON Schema constraints such as minLength/minItems serialize as 1,
+        // not 1.0, which some OpenAI-compatible providers reject.
+        Some(Kind::NumberValue(value))
+            if value.fract() == 0.0 && value.abs() <= 9_007_199_254_740_991.0 =>
+        {
+            Value::Number(serde_json::Number::from(*value as i64))
+        }
         Some(Kind::NumberValue(value)) => serde_json::Number::from_f64(*value)
             .map(Value::Number)
             .unwrap_or(Value::Null),
@@ -586,6 +594,100 @@ fn xml(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn to_prost(value: &Value) -> prost_types::Value {
+        use prost_types::value::Kind;
+        let kind = match value {
+            Value::Null => Kind::NullValue(0),
+            Value::Bool(value) => Kind::BoolValue(*value),
+            Value::Number(value) => Kind::NumberValue(value.as_f64().unwrap()),
+            Value::String(value) => Kind::StringValue(value.clone()),
+            Value::Array(values) => Kind::ListValue(prost_types::ListValue {
+                values: values.iter().map(to_prost).collect(),
+            }),
+            Value::Object(values) => Kind::StructValue(prost_types::Struct {
+                fields: values
+                    .iter()
+                    .map(|(key, value)| (key.clone(), to_prost(value)))
+                    .collect(),
+            }),
+        };
+        prost_types::Value { kind: Some(kind) }
+    }
+
+    #[test]
+    fn mcp_protobuf_schema_preserves_integer_constraints_and_object_unions() {
+        let schema = serde_json::json!({
+            "anyOf": [
+                {"type":"object", "properties":{"rootPath":{"type":"string","minLength":1}}, "required":["rootPath"], "additionalProperties":false},
+                {"type":"object", "properties":{"rootPaths":{"type":"array","minItems":1,"items":{"type":"string","minLength":1}}}, "required":["rootPaths"], "additionalProperties":false}
+            ]
+        });
+        let tool = pb::McpToolDefinition {
+            name: "move_agent_to_root".into(),
+            input_schema: Some(to_prost(&schema)),
+            ..Default::default()
+        };
+        let context = pb::RequestContext {
+            tools: vec![tool],
+            ..Default::default()
+        };
+        let compiled = dynamic_mcp(&pb::AgentRunRequest::default(), &context).unwrap();
+        let (wire, definition) = compiled.get("move_agent_to_root").unwrap();
+        let mut expected = schema;
+        expected["type"] = serde_json::json!("object");
+        assert_eq!(definition.parameters.to_string(), expected.to_string());
+        assert_eq!(
+            definition.parameters["anyOf"][0]["properties"]["rootPath"]["minLength"].as_u64(),
+            Some(1)
+        );
+        assert_eq!(
+            wire, &context.tools[0],
+            "Cursor dispatch definition stays unchanged"
+        );
+    }
+
+    #[test]
+    fn protobuf_schema_numbers_preserve_fractional_and_large_values() {
+        use prost_types::value::Kind;
+        for (input, expected) in [
+            (0.0, "0"),
+            (1.0, "1"),
+            (-2.0, "-2"),
+            (0.25, "0.25"),
+            (-0.5, "-0.5"),
+        ] {
+            assert_eq!(
+                prost_value(&prost_types::Value {
+                    kind: Some(Kind::NumberValue(input))
+                })
+                .to_string(),
+                expected
+            );
+        }
+        for value in [
+            9_007_199_254_740_992.0,
+            i64::MAX as f64,
+            u64::MAX as f64,
+            1e30,
+            -1e30,
+            f64::MAX,
+        ] {
+            assert_eq!(
+                prost_value(&prost_types::Value {
+                    kind: Some(Kind::NumberValue(value))
+                })
+                .as_f64(),
+                Some(value)
+            );
+        }
+        assert_eq!(
+            prost_value(&prost_types::Value {
+                kind: Some(Kind::NumberValue(f64::INFINITY))
+            }),
+            Value::Null
+        );
+    }
 
     fn rule(content: &str) -> pb::CursorRule {
         pb::CursorRule {

@@ -488,6 +488,35 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn saved_anthropic_budget_is_validated_and_applied_to_invocations() {
+        let (_directory, store) = store().await;
+        let mut input = model_input(None);
+        input.model_type = ModelType::Anthropic;
+        input.supports_thinking = true;
+        input.anthropic_max_tokens = Some(8192);
+        for budget in [0, 1023, 8192, 9000] {
+            input.thinking_budget_tokens = Some(budget);
+            assert!(store.create_model(&input).await.is_err());
+        }
+        input.thinking_budget_tokens = Some(4096);
+        let saved = store.create_model(&input).await.unwrap();
+        let saved = store.model(&saved.model_hash).await.unwrap().unwrap();
+        let mut request = crate::model::ModelSpec::new(&saved.model_hash);
+        request.max_output_tokens = Some(30_000);
+        request.context_window_tokens = Some(500_000);
+        request.reasoning.effort = Some("low".into());
+        saved.configure(&mut request);
+        assert_eq!(request.max_output_tokens, Some(8192));
+        assert_eq!(request.reasoning.budget_tokens, Some(4096));
+        assert!(request.reasoning.enabled);
+        assert_eq!(request.reasoning.effort.as_deref(), Some("low"));
+        assert_eq!(request.context_window_tokens, Some(500_000));
+        request.max_output_tokens = Some(2048);
+        saved.configure(&mut request);
+        assert_eq!(request.max_output_tokens, Some(2048));
+    }
+
     /// 分组名是纯展示字段:入库时去除首尾空白、空串归一为 NULL,
     /// 更新分组名不得改变模型身份哈希。
     #[tokio::test]

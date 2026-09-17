@@ -24,6 +24,7 @@ pub fn requested_model(request: &pb::AgentRunRequest) -> Result<ModelSpec> {
             reasoning: ReasoningSpec {
                 enabled: details.is_some_and(|model| model.thinking_details.is_some()),
                 effort: None,
+                budget_tokens: None,
             },
             latency: ModelLatency::Standard,
             max_output_tokens: None,
@@ -89,6 +90,7 @@ fn from_requested(
             enabled: model.max_mode
                 || details.is_some_and(|model| model.thinking_details.is_some()),
             effort: None,
+            budget_tokens: None,
         },
         latency: ModelLatency::Standard,
         max_output_tokens: None,
@@ -101,7 +103,8 @@ fn from_requested(
             "effort" | "reasoning" => {
                 let effort = parameter.value.trim();
                 spec.reasoning.effort =
-                    (effort != "none" && !effort.is_empty()).then(|| effort.to_string());
+                    (effort != "none" && effort != "default" && !effort.is_empty())
+                        .then(|| effort.to_string());
                 spec.reasoning.enabled |= spec.reasoning.effort.is_some();
             }
             "thinking" => spec.reasoning.enabled |= parse_bool(parameter)?,

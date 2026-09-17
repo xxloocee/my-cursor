@@ -305,13 +305,25 @@ fn apply_model(body: &mut Value, model: &crate::model::ModelSpec) -> Result<()> 
         .as_object_mut()
         .ok_or_else(|| Error::Provider("Anthropic request body is not an object".into()))?;
     if model.reasoning.enabled {
-        object.insert(
-            "thinking".into(),
-            json!({"type":"adaptive", "display":"summarized"}),
-        );
+        let thinking = if let Some(budget) = model.reasoning.budget_tokens {
+            let max_tokens = object
+                .get("max_tokens")
+                .and_then(Value::as_u64)
+                .unwrap_or(DEFAULT_MAX_OUTPUT_TOKENS);
+            if budget < 1024 || max_tokens <= 1024 {
+                return Err(Error::Config("Anthropic fixed thinking requires a budget of at least 1024 and max output tokens above 1024".into()));
+            }
+            // Smaller task budgets (e.g. Commit) still need room for visible output.
+            json!({"type":"enabled", "budget_tokens": budget.min(max_tokens.saturating_sub(1024).max(1024))})
+        } else {
+            json!({"type":"adaptive", "display":"summarized"})
+        };
+        object.insert("thinking".into(), thinking);
     }
-    if let Some(effort) = &model.reasoning.effort {
-        object.insert("output_config".into(), json!({"effort":effort}));
+    if model.reasoning.budget_tokens.is_none() {
+        if let Some(effort) = &model.reasoning.effort {
+            object.insert("output_config".into(), json!({"effort":effort}));
+        }
     }
     Ok(())
 }
@@ -505,6 +517,29 @@ fn anthropic_usage(value: &Value) -> Usage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fixed_thinking_budget_reaches_wire_and_respects_task_limits() {
+        let mut model = crate::model::ModelSpec::new("claude");
+        model.reasoning.enabled = true;
+        model.reasoning.effort = Some("xhigh".into());
+        model.reasoning.budget_tokens = Some(4096);
+        for (limit, expected) in [(8192, 4096), (3000, 1976), (1025, 1024)] {
+            let mut body = json!({"max_tokens":limit});
+            apply_model(&mut body, &model).unwrap();
+            assert_eq!(
+                body["thinking"],
+                json!({"type":"enabled", "budget_tokens":expected})
+            );
+            assert!(body.get("output_config").is_none());
+        }
+        assert!(apply_model(&mut json!({"max_tokens":1024}), &model).is_err());
+        model.reasoning.budget_tokens = None;
+        let mut body = json!({"max_tokens":8192});
+        apply_model(&mut body, &model).unwrap();
+        assert_eq!(body["thinking"]["type"], "adaptive");
+        assert_eq!(body["output_config"]["effort"], "xhigh");
+    }
 
     #[test]
     fn cached_tokens_are_included_once_in_anthropic_context_input() {

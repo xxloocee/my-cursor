@@ -192,7 +192,7 @@ impl CursorHarness {
         }
         if proxy.running() {
             if let Some(url) = proxy.url() {
-                apply_cursor_configuration(&url).await?;
+                settings::write_proxy_settings(&url)?;
             }
             return Ok(());
         }
@@ -211,7 +211,7 @@ impl CursorHarness {
             proxy.stop().await;
             return Err(error);
         }
-        if let Err(error) = apply_cursor_configuration(&url).await {
+        if let Err(error) = settings::write_proxy_settings(&url) {
             proxy.stop().await;
             return Err(error);
         }
@@ -223,9 +223,4 @@ impl CursorHarness {
         self.inner.proxy.lock().await.stop().await;
         Ok(())
     }
-}
-
-async fn apply_cursor_configuration(proxy_url: &str) -> Result<()> {
-    account::inject_if_missing().await?;
-    settings::write_proxy_settings(proxy_url)
 }

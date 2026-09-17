@@ -329,6 +329,26 @@ impl PluginStateStore {
         Ok(serde_json::from_value(value)?)
     }
 
+    pub async fn enabled_model(
+        &self,
+        plugin_id: &str,
+        provider_id: &str,
+        model_id: &str,
+    ) -> Result<StoredModel> {
+        let model = self
+            .models(plugin_id, provider_id)
+            .await?
+            .into_iter()
+            .find(|model| model.id == model_id)
+            .ok_or_else(|| Error::RunNotFound(format!("plugin model {model_id}")))?;
+        if !model.enabled {
+            return Err(Error::Provider(format!(
+                "plugin model {model_id} is disabled"
+            )));
+        }
+        Ok(model)
+    }
+
     pub async fn replace_models(
         &self,
         plugin_id: &str,
@@ -420,6 +440,56 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let data = PluginDataStore::for_test(root.path().join("data")).unwrap();
         (root, PluginStateStore::new(data))
+    }
+
+    #[tokio::test]
+    async fn invocation_selection_rechecks_enabled_state_and_current_limit() {
+        let (_root, store) = store();
+        let mut model =
+            StoredModel::from_definition(&serde_json::json!({"id":"test", "displayName":"Test"}))
+                .unwrap();
+        model.max_output_tokens = Some(8192);
+        store
+            .replace_models("dev.example", "test", &[model.clone()])
+            .await
+            .unwrap();
+        let planned = store
+            .enabled_model("dev.example", "test", "test")
+            .await
+            .unwrap();
+        assert_eq!(planned.max_output_tokens, Some(8192));
+        store
+            .set_model_enabled("dev.example", "test", "test", false)
+            .await
+            .unwrap();
+        assert!(store
+            .enabled_model("dev.example", "test", "test")
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("disabled"));
+        model.max_output_tokens = Some(2048);
+        store
+            .replace_models("dev.example", "test", &[model])
+            .await
+            .unwrap();
+        assert!(store
+            .enabled_model("dev.example", "test", "test")
+            .await
+            .is_err());
+        store
+            .set_model_enabled("dev.example", "test", "test", true)
+            .await
+            .unwrap();
+        let current = store
+            .enabled_model("dev.example", "test", "test")
+            .await
+            .unwrap();
+        let mut spec = crate::model::ModelSpec::new("test");
+        spec.max_output_tokens = Some(30_000);
+        spec.limit_output_tokens(planned.max_output_tokens);
+        spec.limit_output_tokens(current.max_output_tokens);
+        assert_eq!(spec.max_output_tokens, Some(2048));
     }
 
     #[tokio::test]

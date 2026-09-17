@@ -220,12 +220,13 @@ const CONTEXTS: [(&str, &str); 5] = [
     ("800k", "800K"),
     ("1m", "1M"),
 ];
-const EFFORTS: [(&str, &str); 5] = [
+const EFFORTS: [(&str, &str); 6] = [
     ("low", "Low"),
     ("medium", "Medium"),
     ("high", "High"),
     ("xhigh", "Extra High"),
     ("max", "Max"),
+    ("default", "Default"),
 ];
 const DEFAULT_CONTEXT: &str = "200k";
 
@@ -315,9 +316,14 @@ pub async fn usable_models(
 
 pub async fn default_model_for_cli(
     State(registry): State<TransportRegistry>,
+    Extension(proxy): Extension<CursorProxy>,
+    request: Request<Body>,
 ) -> Result<Response<Body>> {
     let models = registry.store().models().await?;
     let plugin_models = configured_plugin_models(&registry).await;
+    if models.is_empty() && plugin_models.is_empty() {
+        return proxy::forward(Extension(proxy), request).await;
+    }
     Ok(local_response(
         agent::GetDefaultModelForCliResponse {
             model: default_model_details(&models, &plugin_models),
@@ -326,9 +332,16 @@ pub async fn default_model_for_cli(
     ))
 }
 
-pub async fn default_model(State(registry): State<TransportRegistry>) -> Result<Response<Body>> {
+pub async fn default_model(
+    State(registry): State<TransportRegistry>,
+    Extension(proxy): Extension<CursorProxy>,
+    request: Request<Body>,
+) -> Result<Response<Body>> {
     let models = registry.store().models().await?;
     let plugin_models = configured_plugin_models(&registry).await;
+    if models.is_empty() && plugin_models.is_empty() {
+        return proxy::forward(Extension(proxy), request).await;
+    }
     Ok(local_response(
         default_model_response(&models, &plugin_models).encode_to_vec(),
     ))
@@ -336,9 +349,14 @@ pub async fn default_model(State(registry): State<TransportRegistry>) -> Result<
 
 pub async fn default_model_nudge(
     State(registry): State<TransportRegistry>,
+    Extension(proxy): Extension<CursorProxy>,
+    request: Request<Body>,
 ) -> Result<Response<Body>> {
     let models = registry.store().models().await?;
     let plugin_models = configured_plugin_models(&registry).await;
+    if models.is_empty() && plugin_models.is_empty() {
+        return proxy::forward(Extension(proxy), request).await;
+    }
     Ok(local_response(
         default_model_nudge_response(&models, &plugin_models).encode_to_vec(),
     ))
@@ -453,7 +471,7 @@ fn unary_payload(body: &Bytes) -> Result<(bool, &[u8])> {
 fn available_model(model: &ModelConfig) -> AvailableModel {
     let contexts = context_options(model.context_window_tokens);
     let tooltip = model_tooltip(model);
-    let variants = model_variants(
+    let mut variants = model_variants(
         &model.model_hash,
         &model.display_name,
         &tooltip,
@@ -461,6 +479,26 @@ fn available_model(model: &ModelConfig) -> AvailableModel {
         model.supports_thinking,
         model.supports_fast,
     );
+    let default_context = model.context_window_tokens.unwrap_or(200_000);
+    let default_effort = match model.model_type {
+        crate::model::ModelType::OpenAi => model.reasoning_effort.as_deref(),
+        crate::model::ModelType::Anthropic => model.anthropic_thinking_effort.as_deref(),
+    }
+    .unwrap_or("default");
+    for variant in &mut variants {
+        let is_default =
+            variant
+                .parameter_values
+                .iter()
+                .all(|parameter| match parameter.id.as_str() {
+                    "context" => parse_token_count(&parameter.value) == Some(default_context),
+                    "reasoning" => parameter.value == default_effort,
+                    "fast" => parameter.value == "false",
+                    _ => true,
+                });
+        variant.is_default_max_config = is_default.then_some(true);
+        variant.is_default_non_max_config = is_default.then_some(true);
+    }
     let legacy_slugs = variants
         .iter()
         .filter_map(|variant| variant.legacy_slug.clone())
@@ -603,6 +641,7 @@ fn model_variants(
             Some(EFFORTS[2]),
             Some(EFFORTS[3]),
             Some(EFFORTS[4]),
+            Some(EFFORTS[5]),
         ]
     } else {
         &[None]
@@ -833,6 +872,59 @@ mod tests {
             thinking_budget_tokens: None,
             created_at_ms: 0,
             updated_at_ms: 0,
+        }
+    }
+
+    #[test]
+    fn configured_defaults_survive_catalog_selection_and_task_budget() {
+        for effort in [None, Some("low"), Some("xhigh")] {
+            let mut configured = model();
+            configured.supports_thinking = true;
+            configured.context_window_tokens = Some(123_456);
+            configured.reasoning_effort = effort.map(str::to_owned);
+            configured.max_completion_tokens = Some(8192);
+            let catalog = available_model(&configured);
+            let defaults = catalog
+                .variants
+                .iter()
+                .filter(|v| v.is_default_non_max_config == Some(true))
+                .collect::<Vec<_>>();
+            assert_eq!(defaults.len(), 1);
+            let parameters = &defaults[0].parameter_values;
+            assert_eq!(
+                parameters
+                    .iter()
+                    .find(|p| p.id == "context")
+                    .map(|p| parse_token_count(&p.value)),
+                Some(Some(123_456))
+            );
+            assert_eq!(
+                parameters
+                    .iter()
+                    .find(|p| p.id == "reasoning")
+                    .map(|p| p.value.as_str()),
+                Some(effort.unwrap_or("default"))
+            );
+            let mut spec = crate::cursor::compile::requested_model(&agent::AgentRunRequest {
+                requested_model: Some(agent::RequestedModel {
+                    model_id: configured.model_hash.clone(),
+                    parameters: parameters
+                        .iter()
+                        .map(|p| agent::requested_model::ModelParameterValue {
+                            id: p.id.clone(),
+                            value: p.value.clone(),
+                        })
+                        .collect(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+            .unwrap();
+            spec.max_output_tokens = Some(30_000);
+            configured.configure(&mut spec);
+            assert_eq!(spec.context_window_tokens, Some(123_456));
+            assert_eq!(spec.reasoning.effort.as_deref(), effort);
+            assert_eq!(spec.max_output_tokens, Some(8192));
         }
     }
 

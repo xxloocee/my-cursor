@@ -213,11 +213,8 @@ impl PluginRegistry {
         let stored = self
             .inner
             .state
-            .models(plugin_id, provider_id)
-            .await?
-            .into_iter()
-            .find(|model| model.id == upstream_id)
-            .ok_or_else(|| Error::RunNotFound(format!("plugin model {model_id}")))?;
+            .enabled_model(plugin_id, provider_id, upstream_id)
+            .await?;
         Ok(PluginModelDescriptor::new(
             plugin_id,
             &entry.manifest.name,
@@ -250,10 +247,7 @@ impl PluginRegistry {
             let executable = registry.executable()?;
             let entry = registry.find_entry(&executable, &plugin_id).await?;
             let provider = find_provider(&entry, &provider_id)?.clone();
-            let stored = registry.inner.state.models(&plugin_id, &provider_id).await?
-                .into_iter()
-                .find(|model| model.id == upstream_id)
-                .ok_or_else(|| Error::RunNotFound(format!("plugin model {model_id}")))?;
+            let stored = registry.inner.state.enabled_model(&plugin_id, &provider_id, &upstream_id).await?;
             let resource = match &provider.resource_type {
                 Some(resource_type) => Some((
                     resource_type.clone(),
@@ -261,6 +255,8 @@ impl PluginRegistry {
                 )),
                 None => None,
             };
+            let mut invocation = invocation;
+            invocation.request.model.limit_output_tokens(stored.max_output_tokens);
             let request = wire::llm_request(&invocation)?;
             let params = serde_json::json!({
                 "providerId": provider_id,

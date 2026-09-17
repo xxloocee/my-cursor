@@ -97,6 +97,10 @@ fn merge_extra_params(body: &mut serde_json::Value, extra: &serde_json::Value) -
                 | "system"
                 | "instructions"
                 | "prompt_cache_key"
+                | "max_tokens"
+                | "max_completion_tokens"
+                | "max_output_tokens"
+                | "thinking"
         ) {
             return Err(crate::Error::Config(format!(
                 "model extra params cannot replace {name}"
@@ -136,6 +140,19 @@ fn apply_openai_prompt_cache_key(body: &mut serde_json::Value, model_id: &str) -
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extra_params_cannot_bypass_structured_output_or_thinking_limits() {
+        for key in [
+            "max_tokens",
+            "max_completion_tokens",
+            "max_output_tokens",
+            "thinking",
+        ] {
+            let extra = serde_json::json!({key: 100000});
+            assert!(merge_extra_params(&mut serde_json::json!({}), &extra).is_err());
+        }
+    }
 
     #[test]
     fn sse_transport_errors_are_not_relabelled_as_parse_errors() {

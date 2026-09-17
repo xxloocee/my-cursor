@@ -259,15 +259,25 @@ async fn bidi_handler(
     } else if registry.upstream(&decoded.request_id).await {
         false
     } else {
-        trace.resume();
-        trace.request(
-            "bidi_request",
-            body.clone(),
-            trace_outcome(trace_metadata, false, "missing_transport", None),
-        );
-        return Err(crate::Error::Protocol(
-            "first BidiAppend message must select a model".into(),
-        ));
+        // A small control append can overtake a large Run upload. Wait for the
+        // model-bearing request to choose the route without claiming it here.
+        match wait_for_bidi_route(&registry, &decoded, std::time::Duration::from_secs(60)).await {
+            Ok(local) => local,
+            Err(error) => {
+                trace.resume();
+                trace.request(
+                    "bidi_request",
+                    body.clone(),
+                    trace_outcome(
+                        trace_metadata,
+                        false,
+                        "missing_transport",
+                        Some(error.to_string()),
+                    ),
+                );
+                return Err(error);
+            }
+        }
     };
     if first_model.is_some() {
         trace.begin(
@@ -342,6 +352,32 @@ async fn bidi_handler(
     Ok(response)
 }
 
+async fn wait_for_bidi_route(
+    registry: &TransportRegistry,
+    decoded: &bidi::DecodedAppend,
+    timeout: std::time::Duration,
+) -> Result<bool> {
+    if matches!(
+        decoded.message.message,
+        None | Some(agent::agent_client_message::Message::RunRequest(_))
+    ) {
+        return Err(crate::Error::Protocol(
+            "first BidiAppend message must select a model".into(),
+        ));
+    }
+    let route = tokio::time::timeout(timeout, registry.wait_route(&decoded.request_id))
+        .await
+        .map_err(|_| {
+            crate::Error::Protocol(
+                "timed out waiting for initial Cursor Run model selection".into(),
+            )
+        })?;
+    Ok(matches!(
+        route,
+        crate::cursor::transport::TransportRoute::Local
+    ))
+}
+
 fn is_local_model_id(model_id: &str) -> bool {
     model_id.starts_with(crate::model::BUILTIN_MODEL_ID_PREFIX)
         || model_id.starts_with(crate::plugin::ADAPTER_ID_PREFIX)
@@ -403,5 +439,225 @@ mod tests {
         assert!(is_local_model_id("byok:missing-model"));
         assert!(is_local_model_id("plugin:missing/provider/model"));
         assert!(!is_local_model_id("claude-4.5-sonnet"));
+    }
+
+    use super::*;
+    use crate::{
+        cursor::prompting::{PromptAssets, PromptCompiler},
+        model::ModelInvocation,
+        provider::{Provider, ProviderStream},
+        store::Store,
+    };
+    use prost::Message;
+    use std::{sync::Arc, time::Duration};
+
+    struct UnusedProvider;
+    impl Provider for UnusedProvider {
+        fn stream(
+            &self,
+            _: ModelInvocation,
+            _: tokio_util::sync::CancellationToken,
+        ) -> ProviderStream {
+            panic!("routing a control message must not invoke a provider")
+        }
+    }
+
+    async fn registry() -> TransportRegistry {
+        TransportRegistry::new(
+            Store::connect("sqlite::memory:").await.unwrap(),
+            Arc::new(UnusedProvider),
+            PromptCompiler::new(PromptAssets::embedded().unwrap()),
+        )
+    }
+
+    fn heartbeat_body(id: &str, seqno: i64) -> Vec<u8> {
+        let message = agent::AgentClientMessage {
+            message: Some(agent::agent_client_message::Message::ClientHeartbeat(
+                Default::default(),
+            )),
+        };
+        ai::BidiAppendRequest {
+            request_id: Some(ai::BidiRequestId {
+                request_id: id.into(),
+            }),
+            append_seqno: seqno,
+            data: hex::encode(message.encode_to_vec()),
+            ..Default::default()
+        }
+        .encode_to_vec()
+    }
+
+    fn request(body: Vec<u8>) -> Request<Body> {
+        Request::post("/aiserver.v1.BidiService/BidiAppend")
+            .header(header::CONTENT_TYPE, "application/proto")
+            .body(Body::from(body))
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn early_controls_wait_for_local_route_without_claiming_it() {
+        let registry = registry().await;
+        let proxy = CursorProxy::cursor(crate::network::NetworkClients::new(
+            registry.store().clone(),
+        ));
+        let first = bidi_handler(
+            State(registry.clone()),
+            Extension(proxy.clone()),
+            request(heartbeat_body("early", 1)),
+        );
+        let second = bidi_handler(
+            State(registry.clone()),
+            Extension(proxy),
+            request(heartbeat_body("early", 2)),
+        );
+        tokio::pin!(first, second);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), &mut first)
+                .await
+                .is_err(),
+            "control must await Run routing, not return missing-model error"
+        );
+        assert!(tokio::time::timeout(Duration::from_millis(20), &mut second)
+            .await
+            .is_err());
+        assert!(registry.local("early").await.is_none());
+        assert!(!registry.upstream("early").await);
+        registry.get_or_create("early").await.unwrap();
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(2), &mut first)
+                .await
+                .unwrap()
+                .unwrap()
+                .status(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(2), &mut second)
+                .await
+                .unwrap()
+                .unwrap()
+                .status(),
+            StatusCode::OK
+        );
+        registry.shutdown().await;
+    }
+    #[tokio::test]
+    async fn early_control_waits_for_official_route_and_forwards_original_request() {
+        let registry = registry().await;
+        let body = heartbeat_body("official-early", 1);
+        let expected = body.clone();
+        let router = Router::new().route(
+            "/aiserver.v1.BidiService/BidiAppend",
+            post(move |request: Request<Body>| {
+                let expected = expected.clone();
+                async move {
+                    assert_eq!(
+                        request.headers()[header::AUTHORIZATION],
+                        "Bearer test-token"
+                    );
+                    assert_eq!(
+                        to_bytes(request.into_body(), 4096).await.unwrap().as_ref(),
+                        expected.as_slice()
+                    );
+                    (StatusCode::ACCEPTED, "official-response")
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let task = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let proxy = CursorProxy::with_test_upstream(
+            crate::network::NetworkClients::new(registry.store().clone()),
+            format!("http://{address}"),
+        );
+        let mut request = request(body);
+        request.headers_mut().insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer test-token"),
+        );
+        let pending = bidi_handler(State(registry.clone()), Extension(proxy), request);
+        tokio::pin!(pending);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), &mut pending)
+                .await
+                .is_err()
+        );
+        assert!(registry.local("official-early").await.is_none());
+        registry.mark_upstream("official-early").await;
+        let response = tokio::time::timeout(Duration::from_secs(2), &mut pending)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+        assert_eq!(
+            to_bytes(response.into_body(), 4096).await.unwrap().as_ref(),
+            b"official-response"
+        );
+        assert!(registry.local("official-early").await.is_none());
+        task.abort();
+        registry.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn unknown_control_timeout_leaves_no_route_and_invalid_first_messages_fail() {
+        let registry = registry().await;
+        let decoded = bidi::decode(
+            &ai::BidiAppendRequest::decode(heartbeat_body("timeout", 1).as_slice()).unwrap(),
+        )
+        .unwrap();
+        let error = wait_for_bidi_route(&registry, &decoded, Duration::from_millis(1))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("timed out"));
+        assert!(registry.local("timeout").await.is_none());
+        assert!(!registry.upstream("timeout").await);
+        for message in [
+            None,
+            Some(agent::agent_client_message::Message::RunRequest(
+                Default::default(),
+            )),
+        ] {
+            let decoded = bidi::DecodedAppend {
+                request_id: "invalid".into(),
+                seqno: 0,
+                message: agent::AgentClientMessage { message },
+            };
+            let error = tokio::time::timeout(
+                Duration::from_millis(20),
+                wait_for_bidi_route(&registry, &decoded, Duration::from_secs(60)),
+            )
+            .await
+            .unwrap()
+            .unwrap_err();
+            assert!(error.to_string().contains("must select a model"));
+        }
+    }
+
+    #[tokio::test]
+    async fn existing_local_route_accepts_model_less_run_continuation() {
+        let registry = registry().await;
+        registry.get_or_create("continuation").await.unwrap();
+        let message = agent::AgentClientMessage {
+            message: Some(agent::agent_client_message::Message::RunRequest(
+                Default::default(),
+            )),
+        };
+        let body = ai::BidiAppendRequest {
+            request_id: Some(ai::BidiRequestId {
+                request_id: "continuation".into(),
+            }),
+            append_seqno: 1,
+            data: hex::encode(message.encode_to_vec()),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let proxy = CursorProxy::cursor(crate::network::NetworkClients::new(
+            registry.store().clone(),
+        ));
+        let response = bidi_handler(State(registry.clone()), Extension(proxy), request(body))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        registry.shutdown().await;
     }
 }

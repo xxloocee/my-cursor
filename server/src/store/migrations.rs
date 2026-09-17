@@ -77,18 +77,52 @@ fn history_matches(migrator: &Migrator, applied: &[AppliedMigration]) -> bool {
 }
 
 fn select_migrator(applied: &[AppliedMigration]) -> (Migrator, MigrationLineEndings) {
-    let lf = migrator_with_line_endings(MigrationLineEndings::Lf);
-    if history_matches(&lf, applied) {
-        return (lf, MigrationLineEndings::Lf);
-    }
+    for line_endings in [MigrationLineEndings::Lf, MigrationLineEndings::Crlf] {
+        let mut migrator = migrator_with_line_endings(line_endings);
+        if history_matches(&migrator, applied) {
+            return (migrator, line_endings);
+        }
 
-    let crlf = migrator_with_line_endings(MigrationLineEndings::Crlf);
-    if history_matches(&crlf, applied) {
-        return (crlf, MigrationLineEndings::Crlf);
+        // An earlier shipped build applied version 10 before thinking inference was
+        // added to that same script. Validate only that exact SQL against its recorded
+        // checksum; never rewrite history, replay the migration, or infer user settings.
+        if let Some(migration) = migrator
+            .migrations
+            .to_mut()
+            .iter_mut()
+            .find(|migration| migration.version == 10)
+        {
+            let sql = include_str!("migration_history/0010_before_thinking_inference.sql")
+                .replace("\r\n", "\n");
+            let sql = match line_endings {
+                MigrationLineEndings::Lf => sql,
+                MigrationLineEndings::Crlf => sql.replace('\n', "\r\n"),
+            };
+            let historical = Migration::new(
+                migration.version,
+                migration.description.clone(),
+                migration.migration_type,
+                Cow::Owned(sql),
+                migration.no_tx,
+            );
+            if applied.iter().any(|record| {
+                record.version == historical.version
+                    && record.success
+                    && record.checksum == historical.checksum.as_ref()
+            }) {
+                *migration = historical;
+                if history_matches(&migrator, applied) {
+                    return (migrator, line_endings);
+                }
+            }
+        }
     }
 
     // Preserve SQLx's exact validation error for dirty, unknown, or genuinely modified history.
-    (lf, MigrationLineEndings::Lf)
+    (
+        migrator_with_line_endings(MigrationLineEndings::Lf),
+        MigrationLineEndings::Lf,
+    )
 }
 
 pub(super) async fn run(pool: &SqlitePool, database_path: &Path) -> Result<()> {
@@ -380,6 +414,93 @@ mod tests {
     use sqlx::sqlite::SqlitePoolOptions;
 
     use super::*;
+
+    fn historical_model_migrator(line_endings: MigrationLineEndings) -> Migrator {
+        let mut migrator = migrator_with_line_endings(line_endings);
+        let migration = migrator
+            .migrations
+            .to_mut()
+            .iter_mut()
+            .find(|migration| migration.version == 10)
+            .unwrap();
+        let sql = include_str!("migration_history/0010_before_thinking_inference.sql")
+            .replace("\r\n", "\n");
+        let sql = match line_endings {
+            MigrationLineEndings::Lf => sql,
+            MigrationLineEndings::Crlf => sql.replace('\n', "\r\n"),
+        };
+        *migration = Migration::new(
+            10,
+            migration.description.clone(),
+            migration.migration_type,
+            Cow::Owned(sql),
+            migration.no_tx,
+        );
+        migrator
+    }
+
+    #[tokio::test]
+    async fn historical_model_migration_starts_without_rewriting_history_or_models() {
+        for endings in [MigrationLineEndings::Lf, MigrationLineEndings::Crlf] {
+            let pool = SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect("sqlite::memory:")
+                .await
+                .unwrap();
+            let historical = historical_model_migrator(endings);
+            historical.run(&pool).await.unwrap();
+            let before = load_applied_migrations(&pool).await.unwrap();
+            if endings == MigrationLineEndings::Lf {
+                assert_eq!(hex::encode(&before.last().unwrap().checksum),
+                    "2484e755c0e275c687fe26355cdc48a52a7a3aef7e87643e97db06de8b9ec35b9cbc840559506c705cfa093f4421f7ba");
+            }
+            sqlx::query("INSERT INTO model_configs (model_hash, config_hash, display_name, model_type, base_url, api_key, tooltip_data, model_id, reasoning_effort, supports_thinking, created_at_ms, updated_at_ms) VALUES ('byok:keep', 'keep', 'Keep', 'openai', 'https://example.invalid', 'fixture', 'Keep', 'model', 'high', 0, 1, 2)")
+                .execute(&pool).await.unwrap();
+
+            run(&pool, Path::new("historical-model.db")).await.unwrap();
+            run(&pool, Path::new("historical-model.db")).await.unwrap();
+
+            let after = load_applied_migrations(&pool).await.unwrap();
+            assert_eq!(before.len(), after.len());
+            for (before, after) in before.iter().zip(&after) {
+                assert_eq!(before.version, after.version);
+                assert_eq!(before.checksum, after.checksum);
+                assert_eq!(before.execution_time_ns, after.execution_time_ns);
+            }
+            let row: (String, i64, String) = sqlx::query_as(
+                "SELECT model_hash, supports_thinking, reasoning_effort FROM model_configs",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            assert_eq!(row, ("byok:keep".into(), 0, "high".into()));
+        }
+    }
+
+    #[tokio::test]
+    async fn altered_or_unknown_migration_history_is_still_rejected() {
+        for mutation in [
+            "UPDATE _sqlx_migrations SET checksum = X'00' WHERE version = 10",
+            "UPDATE _sqlx_migrations SET checksum = X'00' WHERE version = 9",
+            "UPDATE _sqlx_migrations SET success = 0 WHERE version = 10",
+            "UPDATE _sqlx_migrations SET version = 999 WHERE version = 10",
+        ] {
+            let pool = SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect("sqlite::memory:")
+                .await
+                .unwrap();
+            historical_model_migrator(MigrationLineEndings::Lf)
+                .run(&pool)
+                .await
+                .unwrap();
+            sqlx::query(mutation).execute(&pool).await.unwrap();
+            assert!(
+                run(&pool, Path::new("invalid-history.db")).await.is_err(),
+                "{mutation}"
+            );
+        }
+    }
 
     #[test]
     fn normalized_checksums_match_the_published_lf_and_windows_crlf_migrations() {
