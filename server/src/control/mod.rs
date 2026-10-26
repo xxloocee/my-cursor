@@ -188,6 +188,10 @@ pub fn api_router(service: ControlService) -> Router {
             get(settings::get_ports).put(settings::update_ports),
         )
         .route(
+            "/__byok-api__/api/settings/external-api",
+            get(settings::get_external_api).put(settings::update_external_api),
+        )
+        .route(
             "/__byok-api__/api/settings/storage/statistics",
             get(settings::get_storage).delete(settings::clear_storage),
         )
@@ -206,6 +210,10 @@ pub fn api_router(service: ControlService) -> Router {
         .route(
             "/__byok-api__/api/settings/commit",
             get(settings::get_commit).put(settings::update_commit),
+        )
+        .route(
+            "/__byok-api__/api/settings/pricing",
+            get(settings::get_pricing_settings).put(settings::update_pricing_settings),
         )
         .route(
             "/__byok-api__/api/harness/cursor/status",

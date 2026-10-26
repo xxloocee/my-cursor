@@ -1,4 +1,4 @@
-import type { Locale } from "../i18n/runtime";
+import type { CommitPromptLocale, Locale } from "../i18n/runtime";
 
 export type ModelType = "openai" | "anthropic";
 
@@ -118,8 +118,12 @@ export interface PortSettings {
   service_port: number;
 }
 
+export interface ExternalApiSettings {
+  enabled: boolean;
+  api_key: string;
+}
+
 export interface StatisticsStorage {
-  bytes: number;
   call_count: number;
   trace_count: number;
 }
@@ -159,11 +163,18 @@ export interface DesktopSettings {
 export interface CommitSettings {
   model_id: string;
   prompt: string;
-  prompt_locale: Locale;
+  prompt_locale: CommitPromptLocale;
 }
 
 export interface CommitSettingsView extends CommitSettings {
   default_prompt: string;
+}
+
+export interface TokenPricingSettings {
+  input_per_million: number;
+  output_per_million: number;
+  cache_read_per_million: number;
+  cache_write_per_million: number;
 }
 
 export type PluginRuntimeState = "uninitialized" | "initializing" | "ready" | "failed" | "unsupported";
@@ -531,6 +542,8 @@ export const api = {
   setObservability: (detailed: boolean) => request<{ detailed: boolean }>("/settings/observability", { method: "PUT", body: JSON.stringify({ detailed }) }),
   ports: () => request<PortSettings>("/settings/ports"),
   setPorts: (settings: PortSettings) => request<PortSettings>("/settings/ports", { method: "PUT", body: JSON.stringify(settings) }),
+  externalApiSettings: () => request<ExternalApiSettings>("/settings/external-api"),
+  setExternalApiSettings: (settings: ExternalApiSettings) => request<ExternalApiSettings>("/settings/external-api", { method: "PUT", body: JSON.stringify(settings) }),
   statisticsStorage: () => request<StatisticsStorage>("/settings/storage/statistics"),
   clearStatisticsStorage: (scope: StatisticsStorageScope) => request<StatisticsStorage>("/settings/storage/statistics", { method: "DELETE", body: JSON.stringify({ scope }) }),
   proxySettings: () => request<ProxySettings>("/settings/proxy"),
@@ -541,4 +554,6 @@ export const api = {
   setDesktopSettings: (settings: DesktopSettings) => request<DesktopSettings>("/settings/desktop", { method: "PUT", body: JSON.stringify(settings) }),
   commitSettings: (locale: Locale) => request<CommitSettingsView>("/settings/commit", { headers: { "accept-language": locale } }),
   setCommitSettings: (settings: CommitSettings) => request<CommitSettingsView>("/settings/commit", { method: "PUT", body: JSON.stringify(settings) }),
+  pricingSettings: () => request<TokenPricingSettings>("/settings/pricing"),
+  setPricingSettings: (settings: TokenPricingSettings) => request<TokenPricingSettings>("/settings/pricing", { method: "PUT", body: JSON.stringify(settings) }),
 };

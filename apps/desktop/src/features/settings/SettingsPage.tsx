@@ -4,6 +4,8 @@ import { PageContent } from "../../shell/layout/PageContent";
 import { LegacyModelImport } from "../models/LegacyModelImport";
 import { AppLifecycleSettingsCard } from "./AppLifecycleSettingsCard";
 import { CommitSettingsCard } from "./CommitSettingsCard";
+import { ExternalApiSettingsCard } from "./ExternalApiSettingsCard";
+import { PricingSettingsCard } from "./PricingSettingsCard";
 import { ProxySettingsCard } from "./ProxySettingsCard";
 import { TabSettingsCard } from "./TabSettingsCard";
 import { Button } from "../../shared/ui/Button";
@@ -39,13 +41,16 @@ export function SettingsPage() {
   const [editingTab, setEditingTab] = useState(false);
   const [savingTab, setSavingTab] = useState(false);
   useEffect(() => {
-    void Promise.all([api.statisticsStorage(), api.proxySettings(), api.tabSettings()]).then(([nextStorage, nextProxy, nextTab]) => {
-      setStorage(nextStorage);
-      setOutboundProxy(nextProxy);
-      setProxyDraft({ mode: nextProxy.mode, address: nextProxy.address, auth_enabled: nextProxy.auth_enabled, username: nextProxy.username, password: "" });
-      setTabSettings(nextTab);
-      setTabDraft(nextTab);
-    }).catch((cause) => message(cause instanceof Error ? cause.message : String(cause)));
+    const report = (cause: unknown) => message(cause instanceof Error ? cause.message : String(cause));
+    void api.statisticsStorage().then(setStorage).catch(report);
+    void api.proxySettings().then((next) => {
+      setOutboundProxy(next);
+      setProxyDraft({ mode: next.mode, address: next.address, auth_enabled: next.auth_enabled, username: next.username, password: "" });
+    }).catch(report);
+    void api.tabSettings().then((next) => {
+      setTabSettings(next);
+      setTabDraft(next);
+    }).catch(report);
   }, [message]);
   useEffect(() => {
     setProxyPort(String(ports.proxy_port));
@@ -148,14 +153,6 @@ export function SettingsPage() {
       setSavingTab(false);
     }
   };
-  const formatBytes = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    const units = ["KB", "MB", "GB", "TB"];
-    let value = bytes / 1024;
-    let unit = 0;
-    while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
-    return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
-  };
   const clearTitle = clearScope === "all" ? t("确定要清理全部统计数据吗？") : t("确定要清理详细记录吗？");
   const clearDescription = clearScope === "all"
     ? t("所有调用汇总、详细内容和追踪记录都会被删除。模型配置、CA 和应用设置不会受到影响，此操作无法撤销。")
@@ -228,9 +225,11 @@ export function SettingsPage() {
           </div>
         </div>
       </TitledCard>
+      <ExternalApiSettingsCard servicePort={ports.service_port} />
       <ProxySettingsCard settings={outboundProxy} draft={proxyDraft} editing={editingProxy} saving={savingProxy} onDraftChange={setProxyDraft} onEdit={editProxy} onCancel={cancelProxyEdit} onSave={() => void saveProxy()} />
       <TabSettingsCard settings={tabSettings} draft={tabDraft} editing={editingTab} saving={savingTab} onDraftChange={setTabDraft} onEdit={editTab} onCancel={cancelTabEdit} onSave={() => void saveTab()} />
       <CommitSettingsCard />
+      <PricingSettingsCard />
       <AppLifecycleSettingsCard />
       <LegacyModelImport>{({ busy, previewing, open }) => <TitledCard title={t("导入")}>
         <div className={styles.importRow}>
@@ -247,7 +246,7 @@ export function SettingsPage() {
         <div className={styles.settingRow}>
           <div>
             <strong>{t("界面语言")}</strong>
-            <small>{t("默认跟随操作系统；不支持的系统语言使用英文。当前：{language}", { language: locale === "zh-CN" ? "简体中文" : "English" })}</small>
+            <small>{t("默认跟随操作系统；不支持的系统语言使用英文。当前：{language}", { language: locale === "zh-CN" ? "简体中文" : locale === "pt-BR" ? "Português (Brasil)" : "English" })}</small>
           </div>
           <div className={styles.languageControl}>
             <Select
@@ -257,6 +256,7 @@ export function SettingsPage() {
                 { value: "system", label: t("跟随系统") },
                 { value: "zh-CN", label: "简体中文" },
                 { value: "en-US", label: "English" },
+                { value: "pt-BR", label: "Português (Brasil)" },
               ]}
               onChange={(value) => setLocalePreference(value as LocalePreference)}
             />
@@ -280,7 +280,7 @@ export function SettingsPage() {
         <div className={styles.storageRow}>
           <div>
             <strong>{t("统计数据")}</strong>
-            <small>{storage ? formatBytes(storage.bytes) : t("计算中…")}</small>
+            <small>{storage ? t("调用记录 {calls} 条 · 追踪记录 {traces} 条", { calls: storage.call_count, traces: storage.trace_count }) : t("计算中…")}</small>
           </div>
           <button
             type="button"

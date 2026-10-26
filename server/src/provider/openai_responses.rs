@@ -522,7 +522,7 @@ fn required_u64(value: &Value, name: &str) -> Result<u64> {
         .ok_or_else(|| Error::Provider(format!("OpenAI Responses event is missing {name}")))
 }
 
-fn responses_usage(value: &Value) -> Usage {
+pub(crate) fn responses_usage(value: &Value) -> Usage {
     let input_tokens = value.get("input_tokens").and_then(Value::as_u64);
     Usage {
         input_tokens,

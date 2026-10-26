@@ -492,7 +492,7 @@ fn required_u64(value: &Value, name: &str) -> Result<u64> {
         .ok_or_else(|| Error::Provider(format!("Anthropic event is missing {name}")))
 }
 
-fn anthropic_usage(value: &Value) -> Usage {
+pub(crate) fn anthropic_usage(value: &Value) -> Usage {
     let input_tokens = value.get("input_tokens").and_then(Value::as_u64);
     let cache_read_tokens = value.get("cache_read_input_tokens").and_then(Value::as_u64);
     let cache_write_tokens = value

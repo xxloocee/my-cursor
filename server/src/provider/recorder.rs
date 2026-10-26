@@ -41,7 +41,7 @@ pub struct CallRecorder {
     inner: Arc<Inner>,
 }
 
-pub(super) struct CancelOnDrop {
+pub(crate) struct CancelOnDrop {
     recorder: CallRecorder,
 }
 
@@ -133,7 +133,7 @@ impl CallRecorder {
         self.inner.finished.load(Ordering::Acquire)
     }
 
-    pub(super) fn cancel_on_drop(&self) -> CancelOnDrop {
+    pub(crate) fn cancel_on_drop(&self) -> CancelOnDrop {
         CancelOnDrop {
             recorder: self.clone(),
         }
