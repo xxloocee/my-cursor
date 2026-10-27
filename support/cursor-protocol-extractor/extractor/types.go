@@ -106,7 +106,7 @@ var activeDiagnostics *extractionDiagnostics
 
 // 字段解析正则覆盖压缩 bundle 的各类声明形式。
 var (
-	noRe                    = regexp.MustCompile(`(?:^|[,{]\s*)no:\s*(\d+)`)
+	noRe                    = regexp.MustCompile(`(?:^|[,{]\s*)no:\s*([^,}]+)`)
 	nameRe                  = regexp.MustCompile(`(?:^|[,{]\s*)name:\s*["']([^"']+)["']`)
 	kindRe                  = regexp.MustCompile(`(?:^|[,{]\s*)kind:\s*["']([^"']+)["']`)
 	enumTypeRe              = regexp.MustCompile(`[,\s]T:\s*[\w$.]+\.getEnumType\s*\(\s*([\w$.]+)\s*\)`)

@@ -109,6 +109,16 @@ impl TransportHandle {
         let _ = self.commands.send(TransportCommand::Disconnect).await;
     }
 
+    pub(crate) fn acquire_http(&self) -> bool {
+        self.output.acquire_http()
+    }
+    pub(crate) fn release_http(&self) -> Option<u64> {
+        self.output.release_http()
+    }
+    pub(crate) fn disconnect_if_unsubscribed(&self, epoch: u64) -> bool {
+        self.output.disconnect_if_unsubscribed(epoch)
+    }
+
     pub fn subscribe(&self) -> tokio::sync::mpsc::UnboundedReceiver<Bytes> {
         self.output.subscribe()
     }

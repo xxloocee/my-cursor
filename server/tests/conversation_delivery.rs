@@ -373,7 +373,7 @@ async fn drive_completion(
         let server = pb::AgentServerMessage::decode(payload).unwrap();
         match server.message {
             Some(pb::agent_server_message::Message::ExecServerMessage(exec)) => {
-                assert_eq!(exec.id, 0);
+                assert_ne!(exec.id, 0);
                 assert!(matches!(
                     exec.message,
                     Some(pb::exec_server_message::Message::RequestContextArgs(_))
@@ -387,7 +387,7 @@ async fn drive_completion(
                                     pb::ExecClientControlMessage {
                                         message: Some(
                                             pb::exec_client_control_message::Message::StreamClose(
-                                                pb::ExecClientStreamClose { id: 0 },
+                                                pb::ExecClientStreamClose { id: exec.id },
                                             ),
                                         ),
                                     },
@@ -404,7 +404,7 @@ async fn drive_completion(
                         message: Box::new(pb::AgentClientMessage {
                             message: Some(pb::agent_client_message::Message::ExecClientMessage(
                                 pb::ExecClientMessage {
-                                    id: 0,
+                                    id: exec.id,
                                     message: Some(
                                         pb::exec_client_message::Message::RequestContextResult(
                                             pb::RequestContextResult {
@@ -480,7 +480,7 @@ async fn drive_forwarded_completion(handle: &TransportHandle, message: pb::Agent
         let server = pb::AgentServerMessage::decode(payload).unwrap();
         match server.message {
             Some(pb::agent_server_message::Message::ExecServerMessage(exec)) => {
-                assert_eq!(exec.id, 0);
+                assert_ne!(exec.id, 0);
                 handle
                     .command(TransportCommand::Append {
                         seqno: append_seqno,
@@ -490,7 +490,7 @@ async fn drive_forwarded_completion(handle: &TransportHandle, message: pb::Agent
                                     pb::ExecClientControlMessage {
                                         message: Some(
                                             pb::exec_client_control_message::Message::StreamClose(
-                                                pb::ExecClientStreamClose { id: 0 },
+                                                pb::ExecClientStreamClose { id: exec.id },
                                             ),
                                         ),
                                     },
@@ -507,7 +507,7 @@ async fn drive_forwarded_completion(handle: &TransportHandle, message: pb::Agent
                         message: Box::new(pb::AgentClientMessage {
                             message: Some(pb::agent_client_message::Message::ExecClientMessage(
                                 pb::ExecClientMessage {
-                                    id: 0,
+                                    id: exec.id,
                                     message: Some(
                                         pb::exec_client_message::Message::RequestContextResult(
                                             pb::RequestContextResult {

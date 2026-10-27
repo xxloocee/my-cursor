@@ -13,6 +13,9 @@ struct OutputState {
     history: Vec<Bytes>,
     subscribers: Vec<mpsc::UnboundedSender<Bytes>>,
     closed: bool,
+    http_active: usize,
+    http_epoch: u64,
+    http_sealed: bool,
 }
 
 impl OutputHub {
@@ -34,10 +37,33 @@ impl OutputHub {
         for frame in &state.history {
             let _ = sender.send(frame.clone());
         }
-        if !state.closed {
+        if !state.closed && !state.http_sealed {
             state.subscribers.push(sender);
         }
         receiver
+    }
+
+    pub(crate) fn acquire_http(&self) -> bool {
+        let mut state = self.state.lock();
+        if state.closed || state.http_sealed {
+            return false;
+        }
+        state.http_active += 1;
+        state.http_epoch = state.http_epoch.wrapping_add(1);
+        true
+    }
+    pub(crate) fn release_http(&self) -> Option<u64> {
+        let mut state = self.state.lock();
+        state.http_active -= 1;
+        (state.http_active == 0 && !state.closed).then_some(state.http_epoch)
+    }
+    pub(crate) fn disconnect_if_unsubscribed(&self, epoch: u64) -> bool {
+        let mut state = self.state.lock();
+        if state.closed || state.http_active != 0 || state.http_epoch != epoch {
+            return false;
+        }
+        state.http_sealed = true;
+        true
     }
 
     pub fn close(&self) -> bool {

@@ -195,7 +195,12 @@ async fn run_sse_handler(
 ) -> Result<Response<Body>> {
     let (parts, body) = buffered(request).await?;
     let request: agent::BidiRequestId = connect::decode_unary(&body)?;
-    let route = registry.wait_route(&request.request_id).await;
+    let route = tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        registry.wait_route(&request.request_id),
+    )
+    .await
+    .map_err(|_| crate::Error::Protocol("Cursor route timed out".into()))?;
     let trace = registry.trace(&request.request_id);
     trace.resume();
     trace.request(
@@ -208,19 +213,18 @@ async fn run_sse_handler(
             run_sse::stream(&registry, &request.request_id).await
         }
         crate::cursor::transport::TransportRoute::Upstream(generation) => {
+            let guard = run_sse::UpstreamRunGuard::new(
+                registry.clone(),
+                request.request_id.clone(),
+                generation,
+            )
+            .await?;
             let response = proxy::forward(
                 Extension(proxy),
                 Request::from_parts(parts, Body::from(body)),
             )
             .await?;
-            Ok(run_sse::upstream(
-                registry,
-                request.request_id,
-                generation,
-                response,
-                Some(trace),
-            )
-            .await)
+            Ok(run_sse::upstream(guard, response, Some(trace)).await)
         }
     }
 }

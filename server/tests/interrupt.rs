@@ -2008,3 +2008,76 @@ fn subagent_aborted(id: u32) -> pb::AgentClientMessage {
         )),
     }
 }
+
+#[tokio::test]
+async fn cancel_during_context_preparation_never_calls_provider() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push_pending();
+    let assets =
+        PromptAssets::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("prompt/cursor"))
+            .unwrap();
+    let registry = TransportRegistry::new(
+        store,
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+    let handle = registry.get_or_create("cancel-context").await.unwrap();
+    let mut output = handle.subscribe();
+    let mut request = client_run_for("cancel-context", "cancel-context-conversation");
+    if let Some(pb::agent_client_message::Message::RunRequest(run)) = request.message.as_mut() {
+        run.action.as_mut().unwrap().request_context_parts =
+            Some(pb::RequestContextPartReferences {
+                rules_blob_id: vec![42; 32],
+                ..Default::default()
+            });
+    }
+    handle
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(request),
+        })
+        .await
+        .unwrap();
+    let frame = tokio::time::timeout(std::time::Duration::from_secs(5), output.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let (_, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+    let server = pb::AgentServerMessage::decode(payload).unwrap();
+    assert!(matches!(
+        server.message,
+        Some(pb::agent_server_message::Message::ExecServerMessage(
+            pb::ExecServerMessage {
+                message: Some(pb::exec_server_message::Message::RequestContextArgs(_)),
+                ..
+            }
+        ))
+    ));
+    handle
+        .command(TransportCommand::Append {
+            seqno: 1,
+            message: Box::new(runtime_cancel_action()),
+        })
+        .await
+        .unwrap();
+    loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(5), output.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        if flags & connect::END_STREAM_FLAG != 0 {
+            let end: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+            assert_eq!(end["error"]["code"], "canceled");
+            break;
+        }
+        let server = pb::AgentServerMessage::decode(payload).unwrap();
+        assert!(!matches!(
+            server.message,
+            Some(pb::agent_server_message::Message::ExecServerMessage(_))
+        ));
+    }
+    assert!(provider.requests().is_empty());
+    registry.shutdown().await;
+}

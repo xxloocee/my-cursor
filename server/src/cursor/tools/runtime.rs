@@ -181,7 +181,7 @@ impl CursorToolRuntime {
         stage: ExecStage,
         started_at_ms: Option<u64>,
     ) -> Result<u32> {
-        let id = self.next_id()?;
+        let id = self.allocate_exec_id()?;
         self.execs.lock().await.insert(
             id,
             PendingExec {
@@ -197,7 +197,7 @@ impl CursorToolRuntime {
     }
 
     pub async fn reserve_interaction(&self, call: &ToolCall) -> Result<u32> {
-        let id = self.next_id()?;
+        let id = self.allocate_exec_id()?;
         self.interactions.lock().await.insert(
             id,
             PendingInteraction {
@@ -351,10 +351,11 @@ impl CursorToolRuntime {
             .min()
     }
 
-    fn next_id(&self) -> Result<u32> {
+    pub(crate) fn allocate_exec_id(&self) -> Result<u32> {
         self.next_id
-            .fetch_add(1, Ordering::Relaxed)
-            .checked_add(1)
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .ok()
+            .and_then(|id| id.checked_add(1))
             .ok_or_else(|| Error::Protocol("Cursor message id space exhausted".into()))
     }
 }
@@ -364,4 +365,18 @@ pub(crate) fn now_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+#[cfg(test)]
+mod id_tests {
+    use super::*;
+    #[test]
+    fn exec_id_exhaustion_never_wraps_or_reuses_an_id() {
+        let runtime = CursorToolRuntime::default();
+        runtime.next_id.store(u32::MAX - 1, Ordering::Relaxed);
+        assert_eq!(runtime.allocate_exec_id().unwrap(), u32::MAX);
+        assert!(runtime.allocate_exec_id().is_err());
+        assert!(runtime.allocate_exec_id().is_err());
+        assert_eq!(runtime.next_id.load(Ordering::Relaxed), u32::MAX);
+    }
 }

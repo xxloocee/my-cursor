@@ -35,6 +35,7 @@ struct RunGeneration {
     id: u64,
     request: pb::AgentRunRequest,
     superseded: CancellationToken,
+    cancelled: CancellationToken,
     finished: CancellationToken,
     run: Arc<parking_lot::Mutex<Option<RunHandle>>>,
     results: ToolResultSender,
@@ -75,8 +76,11 @@ impl ConversationRuntime {
             );
             let mut inbox = OrderedInbox::starting_at(0);
             let tool_runtime_factory = CursorToolRuntime::default();
-            let context_sync =
-                RequestContextSynchronizer::new(handle.clone(), dependencies.store.clone());
+            let context_sync = RequestContextSynchronizer::new(
+                handle.clone(),
+                dependencies.store.clone(),
+                tool_runtime_factory.clone(),
+            );
             let mut current = None::<RunGeneration>;
             let mut next_generation = 1_u64;
             let mut pending_finish = None::<(u64, TransportFinish)>;
@@ -145,7 +149,13 @@ impl ConversationRuntime {
                     }
                 };
                 match command {
-                    TransportCommand::Disconnect => {
+                    TransportCommand::Disconnect
+                    | TransportCommand::DisconnectIfUnsubscribed(_) => {
+                        if let TransportCommand::DisconnectIfUnsubscribed(epoch) = command {
+                            if !handle.disconnect_if_unsubscribed(epoch) {
+                                continue;
+                            }
+                        }
                         handle.mark_disconnected();
                         if let Some(generation) = current.as_ref() {
                             generation.superseded.cancel();
@@ -437,6 +447,7 @@ impl ConversationRuntime {
                                         }
                                         Some(pb::conversation_action::Action::CancelAction(_)) => {
                                             if let Some(generation) = current.as_ref() {
+                                                generation.cancelled.cancel();
                                                 if let Some(run) = generation.run.lock().clone() {
                                                     run.cancel();
                                                 }
@@ -548,6 +559,7 @@ async fn start_generation(
         id: *next_generation,
         request: request.clone(),
         superseded: CancellationToken::new(),
+        cancelled: CancellationToken::new(),
         finished: CancellationToken::new(),
         run: Arc::new(parking_lot::Mutex::new(None)),
         results,
@@ -614,159 +626,200 @@ fn spawn_run_request(
 ) {
     tokio::spawn(async move {
         let _finished = FinishGeneration(generation.finished.clone());
-        if let Some(previous_finished) = previous_finished {
-            tokio::select! {
-                biased;
-                _ = generation.superseded.cancelled() => return,
-                _ = previous_finished.cancelled() => {}
+        let preparation = async {
+            if let Some(previous_finished) = previous_finished {
+                tokio::select! {
+                    biased;
+                    _ = generation.superseded.cancelled() => return None,
+                    _ = previous_finished.cancelled() => {}
+                }
             }
-        }
-        if generation.superseded.is_cancelled() {
-            return;
-        }
+            if generation.superseded.is_cancelled() {
+                return None;
+            }
 
-        let mut checkpoint = CheckpointBuilder::new(
-            dependencies.store.clone(),
-            blob_sync.clone(),
-            handle.parent().map(|parent| parent.tool_call_id.clone()),
-            request.conversation_state.clone(),
-        );
-        let prepared = tokio::select! {
+            let mut checkpoint = CheckpointBuilder::new(
+                dependencies.store.clone(),
+                blob_sync.clone(),
+                handle.parent().map(|parent| parent.tool_call_id.clone()),
+                request.conversation_state.clone(),
+            );
+            let prepared = tokio::select! {
+                biased;
+                _ = generation.superseded.cancelled() => return None,
+                prepared = compile::prepare(
+                    handle.request_id(),
+                    &request,
+                    compile::PrepareDependencies {
+                        compiler: &dependencies.compiler,
+                        store: &dependencies.store,
+                        checkpoint: &checkpoint,
+                        blob_sync: &blob_sync,
+                        context_sync: &context_sync,
+                        local_rules_dir: dependencies.local_rules_dir.as_deref(),
+                    },
+                ) => prepared,
+            };
+            let (mut prepared, context) = match prepared {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    if generation.superseded.is_cancelled() {
+                        return None;
+                    }
+                    tracing::error!(
+                        request_id = handle.request_id(),
+                        %error,
+                        "failed to prepare Cursor Run"
+                    );
+                    let _ = handle
+                        .command(TransportCommand::RunFinished {
+                            generation: generation.id,
+                            finish: RunFinish::Transport(TransportFinish::Failed(error)),
+                        })
+                        .await;
+                    return None;
+                }
+            };
+            checkpoint.configure(
+                prepared.model.model_id.clone(),
+                prepared.model.context_window_tokens,
+                context.checkpoint_prompt.instructions.clone(),
+                context.checkpoint_prompt.tools.clone(),
+                context.dynamic_tools.keys().cloned().collect(),
+                context.turn_user.clone(),
+            );
+            if context.background_completion {
+                let event_id = prepared
+                    .initial_messages
+                    .first()
+                    .and_then(|message| message.runtime_event_id.clone())
+                    .unwrap_or_else(|| format!("background:{}", prepared.run_id));
+                match registry
+                    .deliver(
+                        &prepared.conversation_id,
+                        CompiledMessages {
+                            event_id,
+                            target_run_id: None,
+                            messages: prepared.initial_messages.clone(),
+                            delivery: MessageDelivery::InsertMessages,
+                        },
+                    )
+                    .await
+                {
+                    CommandResult::Applied | CommandResult::Duplicate => {
+                        if !generation.superseded.is_cancelled() {
+                            let _ = handle
+                                .command(TransportCommand::RunFinished {
+                                    generation: generation.id,
+                                    finish: RunFinish::Transport(TransportFinish::Success),
+                                })
+                                .await;
+                        }
+                        return None;
+                    }
+                    CommandResult::RunClosing => {
+                        prepared.initial_messages.clear();
+                        tokio::select! {
+                            biased;
+                            _ = generation.superseded.cancelled() => return None,
+                            _ = registry.wait_until_idle(&prepared.conversation_id) => {}
+                        }
+                        if let Ok(checkpoint) = dependencies
+                            .store
+                            .ensure_conversation(&prepared.conversation_id)
+                            .await
+                        {
+                            prepared.base_checkpoint_id = checkpoint;
+                        }
+                    }
+                    CommandResult::RunEnded => {
+                        prepared.initial_messages.clear();
+                    }
+                    CommandResult::StaleTarget => {
+                        if !generation.superseded.is_cancelled() {
+                            let _ = handle
+                                .command(TransportCommand::RunFinished {
+                                    generation: generation.id,
+                                    finish: RunFinish::Transport(TransportFinish::Success),
+                                })
+                                .await;
+                        }
+                        return None;
+                    }
+                }
+            }
+            let pending = registry.take_pending(&prepared.conversation_id).await;
+            if !pending.is_empty() {
+                let mut messages = pending
+                    .into_iter()
+                    .flat_map(|pending| pending.messages)
+                    .collect::<Vec<_>>();
+                messages.extend(prepared.initial_messages);
+                prepared.initial_messages = messages;
+                if let Ok(checkpoint) = dependencies
+                    .store
+                    .ensure_conversation(&prepared.conversation_id)
+                    .await
+                {
+                    prepared.base_checkpoint_id = checkpoint;
+                }
+            }
+            if generation.superseded.is_cancelled() {
+                return None;
+            }
+
+            let run_id = prepared.run_id.clone();
+            let conversation_id = prepared.conversation_id.clone();
+            let (port, core, run_handle) = crate::run::channel(run_id.clone(), 256);
+            *generation.run.lock() = Some(run_handle.clone());
+            if generation.superseded.is_cancelled() {
+                run_handle.cancel();
+                *generation.run.lock() = None;
+                return None;
+            }
+            registry
+                .activate(conversation_id.clone(), run_id.clone(), run_handle.clone())
+                .await;
+            Some((
+                prepared,
+                context,
+                checkpoint,
+                run_id,
+                conversation_id,
+                port,
+                core,
+                run_handle,
+            ))
+        };
+        let prepared_run = tokio::select! {
             biased;
             _ = generation.superseded.cancelled() => return,
-            prepared = compile::prepare(
-                handle.request_id(),
-                &request,
-                compile::PrepareDependencies {
-                    compiler: &dependencies.compiler,
-                    store: &dependencies.store,
-                    checkpoint: &checkpoint,
-                    blob_sync: &blob_sync,
-                    context_sync: &context_sync,
-                    local_rules_dir: dependencies.local_rules_dir.as_deref(),
-                },
-            ) => prepared,
-        };
-        let (mut prepared, context) = match prepared {
-            Ok(prepared) => prepared,
-            Err(error) => {
-                if generation.superseded.is_cancelled() {
-                    return;
-                }
-                tracing::error!(
-                    request_id = handle.request_id(),
-                    %error,
-                    "failed to prepare Cursor Run"
-                );
-                let _ = handle
-                    .command(TransportCommand::RunFinished {
-                        generation: generation.id,
-                        finish: RunFinish::Transport(TransportFinish::Failed(error)),
-                    })
-                    .await;
+            _ = generation.cancelled.cancelled() => {
+                let _ = handle.command(TransportCommand::RunFinished {
+                    generation: generation.id,
+                    finish: RunFinish::Transport(TransportFinish::Cancelled),
+                }).await;
                 return;
             }
+            prepared = preparation => prepared,
         };
-        checkpoint.configure(
-            prepared.model.model_id.clone(),
-            prepared.model.context_window_tokens,
-            context.checkpoint_prompt.instructions.clone(),
-            context.checkpoint_prompt.tools.clone(),
-            context.dynamic_tools.keys().cloned().collect(),
-            context.turn_user.clone(),
-        );
-        if context.background_completion {
-            let event_id = prepared
-                .initial_messages
-                .first()
-                .and_then(|message| message.runtime_event_id.clone())
-                .unwrap_or_else(|| format!("background:{}", prepared.run_id));
-            match registry
-                .deliver(
-                    &prepared.conversation_id,
-                    CompiledMessages {
-                        event_id,
-                        target_run_id: None,
-                        messages: prepared.initial_messages.clone(),
-                        delivery: MessageDelivery::InsertMessages,
-                    },
-                )
-                .await
-            {
-                CommandResult::Applied | CommandResult::Duplicate => {
-                    if !generation.superseded.is_cancelled() {
-                        let _ = handle
-                            .command(TransportCommand::RunFinished {
-                                generation: generation.id,
-                                finish: RunFinish::Transport(TransportFinish::Success),
-                            })
-                            .await;
-                    }
-                    return;
-                }
-                CommandResult::RunClosing => {
-                    prepared.initial_messages.clear();
-                    tokio::select! {
-                        biased;
-                        _ = generation.superseded.cancelled() => return,
-                        _ = registry.wait_until_idle(&prepared.conversation_id) => {}
-                    }
-                    if let Ok(checkpoint) = dependencies
-                        .store
-                        .ensure_conversation(&prepared.conversation_id)
-                        .await
-                    {
-                        prepared.base_checkpoint_id = checkpoint;
-                    }
-                }
-                CommandResult::RunEnded => {
-                    prepared.initial_messages.clear();
-                }
-                CommandResult::StaleTarget => {
-                    if !generation.superseded.is_cancelled() {
-                        let _ = handle
-                            .command(TransportCommand::RunFinished {
-                                generation: generation.id,
-                                finish: RunFinish::Transport(TransportFinish::Success),
-                            })
-                            .await;
-                    }
-                    return;
-                }
-            }
-        }
-        let pending = registry.take_pending(&prepared.conversation_id).await;
-        if !pending.is_empty() {
-            let mut messages = pending
-                .into_iter()
-                .flat_map(|pending| pending.messages)
-                .collect::<Vec<_>>();
-            messages.extend(prepared.initial_messages);
-            prepared.initial_messages = messages;
-            if let Ok(checkpoint) = dependencies
-                .store
-                .ensure_conversation(&prepared.conversation_id)
-                .await
-            {
-                prepared.base_checkpoint_id = checkpoint;
-            }
-        }
-        if generation.superseded.is_cancelled() {
+        let Some((prepared, context, checkpoint, run_id, conversation_id, port, core, run_handle)) =
+            prepared_run
+        else {
             return;
-        }
-
-        let run_id = prepared.run_id.clone();
-        let conversation_id = prepared.conversation_id.clone();
-        let (port, core, run_handle) = crate::run::channel(run_id.clone(), 256);
-        *generation.run.lock() = Some(run_handle.clone());
-        if generation.superseded.is_cancelled() {
+        };
+        if generation.cancelled.is_cancelled() {
             run_handle.cancel();
+            registry.release(&conversation_id, &run_id).await;
             *generation.run.lock() = None;
+            let _ = handle
+                .command(TransportCommand::RunFinished {
+                    generation: generation.id,
+                    finish: RunFinish::Transport(TransportFinish::Cancelled),
+                })
+                .await;
             return;
         }
-        registry
-            .activate(conversation_id.clone(), run_id.clone(), run_handle.clone())
-            .await;
         let cancellation = run_handle.cancellation();
         let engine = RunEngine::new(dependencies.store.clone(), dependencies.provider.clone());
         let core_run = tokio::spawn(async move { engine.run(prepared, port, cancellation).await });

@@ -255,7 +255,10 @@ func parseFieldObject(obj string) (*Field, error) {
 	if noMatch == nil {
 		return nil, errors.New("missing field no")
 	}
-	no, _ := strconv.Atoi(noMatch[1])
+	no, err := parseFieldNumber(noMatch[1])
+	if err != nil {
+		return nil, err
+	}
 
 	// 提取字段名称。
 	nameMatch := nameRe.FindStringSubmatch(obj)

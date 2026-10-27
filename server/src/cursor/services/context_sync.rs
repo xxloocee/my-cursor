@@ -1,8 +1,10 @@
 //! Hydrates request context blobs supplied by Cursor.
 use std::{sync::Arc, time::Duration};
 
+use crate::cursor::tools::runtime::CursorToolRuntime;
+use parking_lot::Mutex;
 use prost::Message;
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::oneshot;
 
 use crate::{
     cursor::{protocol::proto::agent::v1 as pb, transport::TransportHandle},
@@ -16,14 +18,16 @@ type ContextSender = oneshot::Sender<Result<pb::RequestContext>>;
 pub(crate) struct RequestContextSynchronizer {
     handle: TransportHandle,
     store: Store,
-    pending: Arc<Mutex<Option<ContextSender>>>,
+    pending: Arc<Mutex<Option<(u32, ContextSender)>>>,
+    ids: CursorToolRuntime,
 }
 
 impl RequestContextSynchronizer {
-    pub(crate) fn new(handle: TransportHandle, store: Store) -> Self {
+    pub(crate) fn new(handle: TransportHandle, store: Store, ids: CursorToolRuntime) -> Self {
         Self {
             handle,
             store,
+            ids,
             pending: Arc::new(Mutex::new(None)),
         }
     }
@@ -46,15 +50,21 @@ impl RequestContextSynchronizer {
     }
 
     pub(crate) async fn load(&self, conversation_id: &str) -> Result<pb::RequestContext> {
+        let id = self.ids.allocate_exec_id()?;
         let (sender, receiver) = oneshot::channel();
-        let mut pending = self.pending.lock().await;
-        if pending.is_some() {
-            return Err(Error::Protocol(
-                "Cursor request context is already being loaded".into(),
-            ));
+        {
+            let mut pending = self.pending.lock();
+            if pending.is_some() {
+                return Err(Error::Protocol(
+                    "Cursor request context is already being loaded".into(),
+                ));
+            }
+            *pending = Some((id, sender));
         }
-        *pending = Some(sender);
-        drop(pending);
+        let _pending = PendingContext {
+            pending: self.pending.clone(),
+            id,
+        };
 
         tracing::info!(
             request_id = self.handle.request_id(),
@@ -66,7 +76,7 @@ impl RequestContextSynchronizer {
             ttft_breakdown: None,
             message: Some(pb::agent_server_message::Message::ExecServerMessage(
                 pb::ExecServerMessage {
-                    id: 0,
+                    id,
                     message: Some(pb::exec_server_message::Message::RequestContextArgs(
                         pb::RequestContextArgs {
                             notes_session_id: Some(conversation_id.into()),
@@ -77,7 +87,6 @@ impl RequestContextSynchronizer {
                 },
             )),
         }) {
-            self.pending.lock().await.take();
             return Err(error);
         }
 
@@ -87,22 +96,24 @@ impl RequestContextSynchronizer {
             _ = cancellation.cancelled() => Err(Error::Cancelled),
             _ = tokio::time::sleep(Duration::from_secs(60)) => Err(Error::Protocol("request context timed out".into())),
         };
-        if result.is_err() {
-            self.pending.lock().await.take();
-        }
         result
     }
 
     pub(crate) async fn handle_client(&self, message: &pb::ExecClientMessage) -> bool {
-        if message.id != 0 {
-            return false;
-        }
         let Some(pb::exec_client_message::Message::RequestContextResult(result)) =
             message.message.as_ref()
         else {
             return false;
         };
-        let Some(sender) = self.pending.lock().await.take() else {
+        let sender = {
+            let mut pending = self.pending.lock();
+            if pending.as_ref().is_some_and(|(id, _)| *id == message.id) {
+                pending.take().map(|(_, sender)| sender)
+            } else {
+                None
+            }
+        };
+        let Some(sender) = sender else {
             tracing::warn!(
                 request_id = self.handle.request_id(),
                 "unexpected Cursor request context result"
@@ -132,14 +143,23 @@ impl RequestContextSynchronizer {
     }
 
     pub(crate) async fn handle_stream_close(&self, id: u32) -> bool {
-        id == 0 && self.pending.lock().await.is_some()
+        self.pending
+            .lock()
+            .as_ref()
+            .is_some_and(|(pending_id, _)| *pending_id == id)
     }
 
     pub(crate) async fn handle_throw(&self, id: u32, message: String) -> bool {
-        let sender = if id == 0 {
-            self.pending.lock().await.take()
-        } else {
-            None
+        let sender = {
+            let mut pending = self.pending.lock();
+            if pending
+                .as_ref()
+                .is_some_and(|(pending_id, _)| *pending_id == id)
+            {
+                pending.take().map(|(_, sender)| sender)
+            } else {
+                None
+            }
         };
         let Some(sender) = sender else { return false };
         let _ = sender.send(Err(Error::Protocol(message)));
@@ -193,5 +213,139 @@ impl RequestContextSynchronizer {
         let data = part.encode_to_vec();
         self.store.put_blob(&data, &[]).await?;
         Ok(())
+    }
+}
+
+struct PendingContext {
+    pending: Arc<Mutex<Option<(u32, ContextSender)>>>,
+    id: u32,
+}
+impl Drop for PendingContext {
+    fn drop(&mut self) {
+        let mut pending = self.pending.lock();
+        if pending.as_ref().is_some_and(|(id, _)| *id == self.id) {
+            pending.take();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cursor::{services::observability::CursorTraceService, transport::OutputHub};
+
+    async fn fixture() -> (
+        RequestContextSynchronizer,
+        tokio::sync::mpsc::UnboundedReceiver<bytes::Bytes>,
+    ) {
+        let store = Store::connect("sqlite::memory:").await.unwrap();
+        let (commands, _receiver) = tokio::sync::mpsc::channel(16);
+        let output = Arc::new(OutputHub::default());
+        let handle = TransportHandle::new(
+            "context-test".into(),
+            commands,
+            output,
+            CursorTraceService::new(store.clone()).recorder("context-test"),
+        );
+        let receiver = handle.subscribe();
+        (
+            RequestContextSynchronizer::new(handle, store, CursorToolRuntime::default()),
+            receiver,
+        )
+    }
+    fn response(id: u32) -> pb::ExecClientMessage {
+        pb::ExecClientMessage {
+            id,
+            message: Some(pb::exec_client_message::Message::RequestContextResult(
+                pb::RequestContextResult {
+                    result: Some(pb::request_context_result::Result::Success(
+                        pb::RequestContextSuccess {
+                            request_context: Some(pb::RequestContext {
+                                cloud_rule: Some(format!("context-{id}")),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        },
+                    )),
+                },
+            )),
+            ..Default::default()
+        }
+    }
+    async fn requested_id(
+        load: &mut std::pin::Pin<
+            Box<impl std::future::Future<Output = Result<pb::RequestContext>>>,
+        >,
+        output: &mut tokio::sync::mpsc::UnboundedReceiver<bytes::Bytes>,
+    ) -> u32 {
+        let frame = tokio::select! { result = load => panic!("load ended before request: {result:?}"), frame = output.recv() => frame.unwrap() };
+        let (_, payload) = crate::cursor::protocol::connect::decode_frames(&frame)
+            .unwrap()
+            .pop()
+            .unwrap();
+        let server = pb::AgentServerMessage::decode(payload).unwrap();
+        let Some(pb::agent_server_message::Message::ExecServerMessage(exec)) = server.message
+        else {
+            panic!("missing exec")
+        };
+        exec.id
+    }
+    #[tokio::test]
+    async fn dropped_load_releases_pending_and_stale_results_cannot_complete_replacement() {
+        for stale_first in [true, false] {
+            let (sync, mut output) = fixture().await;
+            let mut old = Box::pin(sync.load("old"));
+            let old_id = requested_id(&mut old, &mut output).await;
+            drop(old);
+            if stale_first {
+                assert!(sync.handle_client(&response(old_id)).await);
+            }
+            let mut new = Box::pin(sync.load("new"));
+            let new_id = requested_id(&mut new, &mut output).await;
+            assert_ne!(old_id, new_id);
+            assert!(!sync.handle_throw(old_id, "stale".into()).await);
+            assert!(!sync.handle_stream_close(old_id).await);
+            if !stale_first {
+                assert!(sync.handle_client(&response(old_id)).await);
+            }
+            assert!(tokio::time::timeout(Duration::from_millis(5), &mut new)
+                .await
+                .is_err());
+            assert!(sync.handle_stream_close(new_id).await);
+            assert!(sync.handle_client(&response(new_id)).await);
+            assert_eq!(
+                new.await.unwrap().cloud_rule.as_deref(),
+                Some(format!("context-{new_id}").as_str())
+            );
+            assert!(sync.handle_client(&response(old_id)).await);
+            let mut third = Box::pin(sync.load("third"));
+            let third_id = requested_id(&mut third, &mut output).await;
+            assert!(sync.handle_client(&response(old_id)).await);
+            assert!(tokio::time::timeout(Duration::from_millis(5), &mut third)
+                .await
+                .is_err());
+            assert!(sync.handle_client(&response(third_id)).await);
+            assert_eq!(
+                third.await.unwrap().cloud_rule.as_deref(),
+                Some(format!("context-{third_id}").as_str())
+            );
+        }
+    }
+    #[tokio::test]
+    async fn matching_throw_fails_only_its_context_load() {
+        let (sync, mut output) = fixture().await;
+        let mut load = Box::pin(sync.load("one"));
+        let id = requested_id(&mut load, &mut output).await;
+        assert!(sync.handle_throw(id, "context failed".into()).await);
+        assert!(load
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("context failed"));
+        let mut retry = Box::pin(sync.load("retry"));
+        let new_id = requested_id(&mut retry, &mut output).await;
+        assert_ne!(id, new_id);
+        assert!(sync.handle_client(&response(new_id)).await);
+        assert!(retry.await.is_ok());
     }
 }

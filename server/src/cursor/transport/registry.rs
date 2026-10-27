@@ -32,13 +32,20 @@ pub struct TransportRegistry {
 struct RegistryInner {
     local: Mutex<HashMap<String, LocalTransport>>,
     next_local_generation: AtomicU64,
-    upstream: Mutex<HashMap<String, u64>>,
+    upstream: Mutex<HashMap<String, UpstreamRoute>>,
+    next_upstream_generation: AtomicU64,
     route_changed: Notify,
     store: Store,
     traces: CursorTraceService,
     web_cache: WebCache,
     plugins: Option<PluginRegistry>,
     conversations: ConversationRegistry,
+}
+
+struct UpstreamRoute {
+    generation: u64,
+    active: usize,
+    epoch: u64,
 }
 
 #[derive(Clone)]
@@ -115,6 +122,7 @@ impl TransportRegistry {
                 local: Mutex::new(HashMap::new()),
                 next_local_generation: AtomicU64::new(1),
                 upstream: Mutex::new(HashMap::new()),
+                next_upstream_generation: AtomicU64::new(1),
                 route_changed: Notify::new(),
                 traces: CursorTraceService::new(store.clone()),
                 conversations: ConversationRegistry::new(
@@ -221,10 +229,21 @@ impl TransportRegistry {
 
     pub async fn mark_upstream(&self, request_id: &str) {
         let mut upstream = self.inner.upstream.lock().await;
-        let generation = upstream.get(request_id).copied().unwrap_or_default() + 1;
-        upstream.insert(request_id.into(), generation);
+        let generation = self
+            .inner
+            .next_upstream_generation
+            .fetch_add(1, Ordering::Relaxed);
+        upstream.insert(
+            request_id.into(),
+            UpstreamRoute {
+                generation,
+                active: 0,
+                epoch: 0,
+            },
+        );
         drop(upstream);
         self.inner.route_changed.notify_waiters();
+        self.expire_upstream(request_id.into(), generation, 0);
     }
 
     pub async fn upstream(&self, request_id: &str) -> bool {
@@ -239,18 +258,77 @@ impl TransportRegistry {
             if self.inner.local.lock().await.contains_key(request_id) {
                 return TransportRoute::Local;
             }
-            if let Some(generation) = self.inner.upstream.lock().await.get(request_id).copied() {
-                return TransportRoute::Upstream(generation);
+            if let Some(route) = self.inner.upstream.lock().await.get(request_id) {
+                return TransportRoute::Upstream(route.generation);
             }
             changed.await;
         }
     }
 
-    pub fn finish_upstream(&self, request_id: String, generation: u64) {
+    pub(crate) async fn begin_upstream(&self, request_id: &str, generation: u64) -> bool {
+        if let Some(route) = self
+            .inner
+            .upstream
+            .lock()
+            .await
+            .get_mut(request_id)
+            .filter(|route| route.generation == generation)
+        {
+            route.active += 1;
+            route.epoch = route.epoch.wrapping_add(1);
+            return true;
+        }
+        false
+    }
+
+    pub(crate) fn end_upstream(&self, request_id: String, generation: u64, complete: bool) {
         let registry = self.clone();
         tokio::spawn(async move {
             let mut upstream = registry.inner.upstream.lock().await;
-            if upstream.get(&request_id) == Some(&generation) {
+            let Some(route) = upstream
+                .get_mut(&request_id)
+                .filter(|route| route.generation == generation)
+            else {
+                return;
+            };
+            if complete {
+                upstream.remove(&request_id);
+                return;
+            }
+            route.active = route.active.saturating_sub(1);
+            if route.active == 0 {
+                route.epoch = route.epoch.wrapping_add(1);
+                let epoch = route.epoch;
+                drop(upstream);
+                registry.expire_upstream(request_id, generation, epoch);
+            }
+        });
+    }
+
+    fn expire_upstream(&self, request_id: String, generation: u64, epoch: u64) {
+        self.expire_upstream_after(
+            request_id,
+            generation,
+            epoch,
+            std::time::Duration::from_secs(60),
+        );
+    }
+
+    fn expire_upstream_after(
+        &self,
+        request_id: String,
+        generation: u64,
+        epoch: u64,
+        grace: std::time::Duration,
+    ) {
+        let registry = self.clone();
+        let deadline = tokio::time::Instant::now() + grace;
+        tokio::spawn(async move {
+            tokio::time::sleep_until(deadline).await;
+            let mut upstream = registry.inner.upstream.lock().await;
+            if upstream.get(&request_id).is_some_and(|route| {
+                route.generation == generation && route.active == 0 && route.epoch == epoch
+            }) {
                 upstream.remove(&request_id);
             }
         });
@@ -268,5 +346,88 @@ impl TransportRegistry {
             )
             .await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        cursor::prompting::PromptAssets, model::ModelInvocation, provider::ProviderStream,
+    };
+    use std::time::Duration;
+    struct NoProvider;
+    impl Provider for NoProvider {
+        fn stream(
+            &self,
+            _: ModelInvocation,
+            _: tokio_util::sync::CancellationToken,
+        ) -> ProviderStream {
+            panic!("unexpected provider request")
+        }
+    }
+    async fn registry() -> TransportRegistry {
+        let store = Store::connect("sqlite::memory:").await.unwrap();
+        let assets = PromptAssets::load(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("prompt/cursor"),
+        )
+        .unwrap();
+        TransportRegistry::new(store, Arc::new(NoProvider), PromptCompiler::new(assets))
+    }
+    async fn generation(registry: &TransportRegistry) -> u64 {
+        let TransportRoute::Upstream(generation) = registry.wait_route("test").await else {
+            panic!()
+        };
+        generation
+    }
+    #[tokio::test]
+    async fn official_route_expiry_is_bounded_and_protects_active_and_new_generations() {
+        let registry = registry().await;
+        registry.mark_upstream("test").await;
+        let first = generation(&registry).await;
+        registry.expire_upstream_after("test".into(), first, 0, Duration::from_millis(5));
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while registry.upstream("test").await {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .unwrap();
+        registry.mark_upstream("test").await;
+        let second = generation(&registry).await;
+        assert!(second > first);
+        registry.expire_upstream_after("test".into(), second, 0, Duration::from_millis(5));
+        // Lease is acquired before the proxy response exists, protecting a pending HTTP request.
+        registry.begin_upstream("test", second).await;
+        tokio::time::sleep(Duration::from_millis(15)).await;
+        assert!(registry.upstream("test").await);
+        registry.end_upstream("test".into(), second, false);
+        tokio::task::yield_now().await;
+        let epoch = registry
+            .inner
+            .upstream
+            .lock()
+            .await
+            .get("test")
+            .unwrap()
+            .epoch;
+        registry.expire_upstream_after("test".into(), second, epoch, Duration::from_millis(5));
+        registry.begin_upstream("test", second).await;
+        tokio::time::sleep(Duration::from_millis(15)).await;
+        assert!(registry.upstream("test").await);
+        registry.mark_upstream("test").await;
+        let third = generation(&registry).await;
+        registry.end_upstream("test".into(), second, true);
+        tokio::task::yield_now().await;
+        assert_eq!(generation(&registry).await, third);
+    }
+    #[tokio::test]
+    async fn missing_route_wait_can_be_bounded_without_new_input() {
+        let registry = registry().await;
+        assert!(
+            tokio::time::timeout(Duration::from_millis(5), registry.wait_route("absent"))
+                .await
+                .is_err()
+        );
     }
 }

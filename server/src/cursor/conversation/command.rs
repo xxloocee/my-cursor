@@ -26,4 +26,5 @@ pub enum TransportCommand {
         finish: RunFinish,
     },
     Disconnect,
+    DisconnectIfUnsubscribed(u64),
 }

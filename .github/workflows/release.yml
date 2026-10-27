@@ -368,4 +368,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.prepare.outputs.version }}
-        run: gh release edit "v${VERSION}" --draft=false --latest
+        run: |
+          test -s "docs/releases/v${VERSION}.md"
+          cp "docs/releases/v${VERSION}.md" release-notes.md
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="v${VERSION}" --jq '"\n\n" + .body' >> release-notes.md
+          gh release edit "v${VERSION}" --title "My Cursor v${VERSION}" \
+            --notes-file release-notes.md --draft=false --latest
